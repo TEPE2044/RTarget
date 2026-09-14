@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { useAuth } from './lib/auth'
 import {
-  settleAll, getVitality, getLedger, getArchives, getNodes, createArchive, createGoal,
+  settleAll, getVitality, getLedger, getArchives, getNodes, createArchive, createGoal, sealArchive,
 } from './lib/game'
 import type { Archive, GameNode, LedgerEntry, Tier } from './lib/game'
 import LoginCard from './components/LoginCard.vue'
@@ -139,6 +139,29 @@ async function addGoal() {
     busy.value = false
   }
 }
+
+// ---------- 封档 ----------
+async function onSeal() {
+  if (!activeArchive.value) return
+  const ok = window.confirm(
+    `封档「${activeArchive.value.name}」？
+有未了结之事将扣当前活力值 10%，干净封档免费。`
+  )
+  if (!ok) return
+  busy.value = true
+  try {
+    const deducted = await sealArchive(activeArchive.value.id)
+    alert(deducted < 0
+      ? `已封档，扣除 ${Math.abs(deducted)} 点活力值`
+      : '已封档（干净了结，免费）')
+    activeArchiveId.value = null
+    await refresh()
+  } catch (e) {
+    alert((e as Error).message)
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -163,6 +186,7 @@ async function addGoal() {
           </select>
           <input v-model="newArchiveName" placeholder="新存档名" @keyup.enter="addArchive" />
           <button :disabled="busy || !newArchiveName.trim()" @click="addArchive()">开新档</button>
+          <button v-if="activeArchive" class="danger" :disabled="busy" @click="onSeal()">封档</button>
         </div>
 
         <NodeList :nodes="nodes" :busy="busy" @refresh="refresh" />
@@ -255,6 +279,7 @@ button {
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 .primary { background: #4f7cff; color: white; }
 .ghost { background: transparent; border: 1px solid #3a3f4a; }
+.danger { background: #6b2f2f; color: #f5d6d6; }
 
 main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; }
 aside { width: 320px; flex-shrink: 0; }

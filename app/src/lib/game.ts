@@ -263,3 +263,10 @@ export async function concedeNode(nodeId: string) {
   if (error) throw error
   await settleAll()
 }
+
+/** 封档：有未了结之事扣当前活力值 10%，干净封档免费。返回扣分（负数或 0） */
+export async function sealArchive(archiveId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('seal_archive', { p_archive_id: archiveId })
+  if (error) throw error
+  return Number(data)
+}
