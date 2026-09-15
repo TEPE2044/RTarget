@@ -21,6 +21,8 @@ create materialized view vitality_current as
   group by user_id;
 
 -- 封档函数（返回 integer，扣分取整）
+-- 返回类型从 numeric 改 integer，必须先 drop 旧函数
+drop function if exists seal_archive(uuid);
 create or replace function seal_archive(p_archive_id uuid)
 returns integer language plpgsql security definer set search_path = public as $$
 declare
