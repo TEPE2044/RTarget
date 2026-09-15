@@ -53,11 +53,24 @@ export const TIER_STAKE: Record<Tier, number | null> = {
 
 // ---------- 核心操作 ----------
 
+/**
+ * 取当前登录用户。
+ * 这里刻意把 getUser 的 error 原样抛出（而不是统一成"未登录"）：
+ * 账号被删除 / token 失效时错误里带 status（401/403），
+ * 上层才能用 isAuthError() 识别出来、把人踢回登录页。
+ */
+async function requireUser() {
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error) throw error
+  if (!user) throw new Error('未登录')
+  return user
+}
+
 /** 惰性结算：打开应用 / 任何关键操作后调用（幂等） */
 export async function settleAll() {
   // 函数签名为 settle_all(p_user_id uuid)，必须显式传参
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('未登录')
+  // 顺带当成一次登录态体检：账号被删时，只有打到服务端的请求才会暴露问题
+  const user = await requireUser()
   const { error } = await supabase.rpc('settle_all', { p_user_id: user.id })
   if (error) throw error
 }
@@ -86,8 +99,7 @@ export async function getLedger(limit = 50): Promise<LedgerEntry[]> {
 
 /** 开新存档 */
 export async function createArchive(name: string): Promise<Archive> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('未登录')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('archives')
     .insert({ name, user_id: user.id })
@@ -109,22 +121,31 @@ export async function getArchives(): Promise<Archive[]> {
 
 /**
  * 设立目标：A + 预绑 B + 预绑 C，三节点原子写入
- * 档位继承（需求变更）：B/C 无独立档位，分值 = A 的档位分值（ALL IN 同样继承快照）
- * B/C 的 due_at 继承 A 的（B 无时限约束，due_at 仅作展示）
+ * - 档位继承：B/C 无独立档位，分值 = A 的档位分值（ALL IN 同样继承快照）
+ * - 死线各自独立：A 用 dueAt；C 用 penaltyDueAt，且**只能落在 A 之后的 1~3 天**
+ *   （需求；这段就是惩罚复合体的补做窗口）；B 无时限，due_at 沿用 A 的仅作展示
  */
 export async function createGoal(input: {
   archiveId: string
   content: string
   tier: Tier
   dueAt: string
+  penaltyDueAt: string
   reward: { content: string }
   penalty: { content: string }
   vitality: number
 }): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('未登录')
+  const user = await requireUser()
   // 活力值四舍五入取整（文档 v1.0：不要小数点）
   const stake = input.tier === 'allin' ? Math.round(input.vitality * 0.8) : TIER_STAKE[input.tier]!
+
+  // C 死线只能是 A 死线之后的 1~3 天（需求），即复合体补做窗口最长 3 天
+  const gapDays = Math.round(
+    (new Date(input.penaltyDueAt).getTime() - new Date(input.dueAt).getTime()) / 86_400_000
+  )
+  if (gapDays < 1 || gapDays > 3) {
+    throw new Error('惩罚 C 的死线只能设在 A 死线之后的 1~3 天内')
+  }
 
   const { data: aNode, error: aErr } = await supabase
     .from('nodes')
@@ -142,7 +163,7 @@ export async function createGoal(input: {
     .single()
   if (aErr) throw aErr
 
-  // B/C 继承 A 的档位与分值
+  // B/C 继承 A 的档位与分值；C 用自己的独立死线（复合体窗口）
   const children = [
     {
       archive_id: input.archiveId,
@@ -152,7 +173,7 @@ export async function createGoal(input: {
       content: input.reward.content,
       tier: input.tier,
       stake,
-      due_at: input.dueAt,
+      due_at: input.dueAt, // B 无时限，仅作展示
       status: 'bound' as NodeStatus, // A 达成前 B 处于 bound
     },
     {
@@ -163,7 +184,7 @@ export async function createGoal(input: {
       content: input.penalty.content,
       tier: input.tier,
       stake,
-      due_at: input.dueAt,
+      due_at: input.penaltyDueAt, // 独立死线：A 判负后这段时间内可补做
       status: 'bound' as NodeStatus, // A 判负前 C 处于 bound
     },
   ]
@@ -188,6 +209,53 @@ export async function getNodes(archiveId: string): Promise<GameNode[]> {
   return data as GameNode[]
 }
 
+/** 当前用户全部节点（跨存档）——首页统计、下拉红点、历史页都用它 */
+export async function getAllNodes(): Promise<GameNode[]> {
+  const { data, error } = await supabase
+    .from('nodes')
+    .select('*')
+    .order('created_at')
+  if (error) throw error
+  return data as GameNode[]
+}
+
+/**
+ * A 是否正处在惩罚复合体里
+ * 判据用 C 的状态而不是 A.completed_at：A 判负后用户补完 A 会写 completed_at，
+ * 但那时复合体还没结算，卡片必须继续显示为复合体。
+ */
+export function inCompound(a: GameNode, c: GameNode | null): boolean {
+  return a.kind === 'A' && a.status === 'settled' && a.compound_a_done === null
+    && !!c && c.status !== 'bound'
+}
+
+/** 存档是否"正在进行"（还有未了结的节点）——下拉列表红点用 */
+export function hasPending(nodes: GameNode[], archiveId: string): boolean {
+  return nodes.some((n) => n.archive_id === archiveId && n.status === 'active')
+}
+
+/** 按存档汇总流水净额（历史页看每个档的收支） */
+export async function getArchiveLedgerSums(): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('vitality_ledger')
+    .select('archive_id, amount')
+  if (error) throw error
+  const sums: Record<string, number> = {}
+  for (const r of data as { archive_id: string | null; amount: number }[]) {
+    if (!r.archive_id) continue
+    sums[r.archive_id] = (sums[r.archive_id] ?? 0) + Number(r.amount)
+  }
+  return sums
+}
+
+/** 从流水里找某存档的封档扣分（note 以"封档"开头的那笔） */
+export function findSealPenalty(ledger: LedgerEntry[], archiveId: string): number | null {
+  const hit = ledger.find(
+    (l) => l.archive_id === archiveId && (l.note ?? '').startsWith('封档')
+  )
+  return hit ? hit.amount : null
+}
+
 /**
  * 主动申报完成（手动结算的唯一入口）
  * - A active 时点击 → A 完成 → 开启 B（bound→active）
@@ -197,8 +265,7 @@ export async function getNodes(archiveId: string): Promise<GameNode[]> {
  * 完成后调用 settleAll 推进复合体结算（若条件满足）
  */
 export async function completeNode(nodeId: string) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('未登录')
+  await requireUser() // 只做登录态体检，这里用不到 user 本身
   const { data: node, error: fetchErr } = await supabase
     .from('nodes')
     .select('*')
@@ -206,6 +273,11 @@ export async function completeNode(nodeId: string) {
     .single()
   if (fetchErr) throw fetchErr
   const n = node as GameNode
+
+  // 幂等守卫：已申报过 / 已进终态，直接返回
+  // （修掉"完成之后完成按钮还能点"——重复点击不再产生任何副作用）
+  if (n.completed_at) return
+  if (n.status === 'settled' && n.compound_a_done !== null) return
 
   // B：确认享受完毕（分早已到账，这里只是记账标记，无时限）
   if (n.kind === 'B' && n.status === 'active') {
@@ -260,7 +332,7 @@ export async function completeNode(nodeId: string) {
   await settleAll()
 }
 
-/** 主动认输（点"未完成"= 主动判负，效果等同超时） */
+/** 主动放弃（= 主动判负，效果等同超时；文字订正：不是"认输"） */
 export async function concedeNode(nodeId: string) {
   const { data: node, error: fetchErr } = await supabase
     .from('nodes')
@@ -271,6 +343,7 @@ export async function concedeNode(nodeId: string) {
   const n = node as GameNode
 
   if (n.status !== 'active') return
+  if (n.completed_at) return // 已申报完成，不再接受放弃
 
   // 把 due_at 挪到过去，让 settleAll 走超时分支（复用同一结算路径，避免两套逻辑）
   const { error } = await supabase
