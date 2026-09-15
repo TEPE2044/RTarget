@@ -120,16 +120,11 @@ export async function createGoal(input: {
 }): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('未登录')
-  const stake =
-    input.tier === 'allin' ? Math.round(input.vitality * 0.8 * 100) / 100 : TIER_STAKE[input.tier]!
-  const bStake =
-    input.reward.tier === 'allin'
-      ? Math.round(input.vitality * 0.8 * 100) / 100
-      : TIER_STAKE[input.reward.tier]!
-  const cStake =
-    input.penalty.tier === 'allin'
-      ? Math.round(input.vitality * 0.8 * 100) / 100
-      : TIER_STAKE[input.penalty.tier]!
+  // 活力值四舍五入取整（文档 v1.0：不要小数点）
+  const allinStake = Math.round(input.vitality * 0.8)
+  const stake = input.tier === 'allin' ? allinStake : TIER_STAKE[input.tier]!
+  const bStake = input.reward.tier === 'allin' ? allinStake : TIER_STAKE[input.reward.tier]!
+  const cStake = input.penalty.tier === 'allin' ? allinStake : TIER_STAKE[input.penalty.tier]!
 
   const { data: aNode, error: aErr } = await supabase
     .from('nodes')
