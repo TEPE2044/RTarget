@@ -54,7 +54,10 @@ export const TIER_STAKE: Record<Tier, number | null> = {
 
 /** 惰性结算：打开应用 / 任何关键操作后调用（幂等） */
 export async function settleAll() {
-  const { error } = await supabase.rpc('settle_all')
+  // 函数签名为 settle_all(p_user_id uuid)，必须显式传参
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('未登录')
+  const { error } = await supabase.rpc('settle_all', { p_user_id: user.id })
   if (error) throw error
 }
 
