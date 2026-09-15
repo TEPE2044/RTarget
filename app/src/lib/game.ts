@@ -68,7 +68,9 @@ export async function getVitality(): Promise<number> {
     .from('vitality_ledger')
     .select('amount')
   if (error) throw error
-  return (data as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0)
+  // 四舍五入取整（文档 v1.0：积分不要小数）
+  const sum = (data as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0)
+  return Math.round(sum)
 }
 
 /** 流水账（最近 n 笔） */
@@ -218,7 +220,7 @@ export async function completeNode(nodeId: string) {
       node_id: nodeId,
       archive_id: n.archive_id,
       reason: 'b_completed',
-      amount: n.stake,
+      amount: Math.round(n.stake),
     })
     if (ledErr) throw ledErr
     await settleAll()
