@@ -14,12 +14,12 @@ import NodeList from './components/NodeList.vue'
 const { session, signOut } = useAuth()
 const { theme, toggleTheme } = useTheme()
 
-// antd v4 ConfigProvider 主题算法（Dark/Light）
+// antd v4 ConfigProvider 主题算法
 const antdThemeConfig = computed(() => ({
   algorithm: theme.value === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
 }))
 
-// 登录用户邮箱（顶栏显示"是谁在登录"）
+// 登录用户邮箱（显示在顶栏）
 const userEmail = computed(() => session.value?.user?.email ?? '')
 
 const vitality = ref(0)
@@ -157,6 +157,10 @@ async function addGoal() {
 // ---------- 封档 ----------
 async function onSeal() {
   if (!activeArchive.value) return
+  const ok = window.confirm(
+    `封档「${activeArchive.value.name}」？\n有未了结之事将扣当前活力值 10%，干净封档免费。`
+  )
+  if (!ok) return
   busy.value = true
   try {
     const deducted = await sealArchive(activeArchive.value.id)
@@ -176,7 +180,8 @@ async function onSeal() {
 <template>
   <a-config-provider :theme="antdThemeConfig">
     <LoginCard v-if="!session" />
-    <div v-else class="min-h-screen app-bg">
+    <div v-else class="min-h-screen ant-layout-bg">
+      <!-- 顶栏 -->
       <header class="flex items-center gap-4 px-6 h-14 border-b sticky top-0 z-10 header-bar">
         <span class="font-bold text-lg tracking-wide">RTarget</span>
         <span class="text-xs opacity-60">{{ now.toLocaleString() }}</span>
@@ -196,14 +201,14 @@ async function onSeal() {
         </aside>
 
         <section class="flex-1 min-w-0">
-          <div class="flex gap-2 mb-5 items-center flex-wrap">
+          <div class="flex gap-2 mb-5 items-center">
             <a-select v-model:value="activeArchiveId" placeholder="选择存档" style="min-width: 160px">
               <a-select-option v-for="a in openArchives" :key="a.id" :value="a.id">{{ a.name }}</a-select-option>
             </a-select>
             <a-input v-model:value="newArchiveName" placeholder="新存档名" style="width: 160px"
               @keyup.enter="addArchive()" />
             <a-button :disabled="busy || !newArchiveName.trim()" @click="addArchive()">开新档</a-button>
-            <a-popconfirm v-if="activeArchive" title="封档？未了结之事将扣当前活力值 10%" ok-text="封档" cancel-text="取消" @confirm="onSeal()">
+            <a-popconfirm v-if="activeArchive" title="封档？未了结之事将扣 10% 活力值" ok-text="封档" cancel-text="取消" @confirm="onSeal()">
               <a-button danger :disabled="busy">封档</a-button>
             </a-popconfirm>
           </div>
@@ -234,40 +239,4 @@ async function onSeal() {
                 </a-form-item>
               </div>
 
-              <a-typography-title :level="5" type="success">奖励 B（想做的事 · 档位继承 A）</a-typography-title>
-              <a-form-item>
-                <a-input v-model:value="goalForm.reward.content" placeholder="做成 A 后想做的事" />
-              </a-form-item>
-
-              <a-typography-title :level="5" type="danger">惩罚 C（一直拖延的事 · 档位继承 A）</a-typography-title>
-              <a-form-item>
-                <a-input v-model:value="goalForm.penalty.content" placeholder="如果没做成，被强制面对的事" />
-              </a-form-item>
-
-              <div class="flex gap-3">
-                <a-button type="primary" html-type="submit" :disabled="busy">押注设立</a-button>
-                <a-button @click="showGoalForm = false">取消</a-button>
-              </div>
-            </a-form>
-          </div>
-        </section>
-      </main>
-    </div>
-  </a-config-provider>
-</template>
-
-<style>
-/* 页面底色随亮暗模式（antd 组件有自己的配色） */
-[data-theme='dark'] .app-bg { background: #141414; color: rgba(255,255,255,0.85); min-height: 100vh; }
-[data-theme='light'] .app-bg { background: #f5f5f5; color: rgba(0,0,0,0.88); min-height: 100vh; }
-
-[data-theme='dark'] .header-bar {
-  background: rgba(20,20,20,0.88); border-color: #2a2a2a; backdrop-filter: blur(8px);
-}
-[data-theme='light'] .header-bar {
-  background: rgba(255,255,255,0.88); border-color: #e8e8e8; backdrop-filter: blur(8px);
-}
-
-[data-theme='dark'] .card-bg { background: #1d1d1d; border-color: #2a2a2a; }
-[data-theme='light'] .card-bg { background: #fff; border-color: #e8e8e8; }
-</style>
+              <a-typography-
