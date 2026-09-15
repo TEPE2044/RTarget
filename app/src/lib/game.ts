@@ -18,6 +18,7 @@ export interface Archive {
 export interface GameNode {
   id: string
   archive_id: string
+  user_id: string
   kind: NodeKind
   parent_id: string | null
   content: string
@@ -83,9 +84,11 @@ export async function getLedger(limit = 50): Promise<LedgerEntry[]> {
 
 /** 开新存档 */
 export async function createArchive(name: string): Promise<Archive> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('未登录')
   const { data, error } = await supabase
     .from('archives')
-    .insert({ name })
+    .insert({ name, user_id: user.id })
     .select()
     .single()
   if (error) throw error
@@ -115,6 +118,8 @@ export async function createGoal(input: {
   penalty: { content: string; tier: Tier; dueAt?: string }
   vitality: number
 }): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('未登录')
   const stake =
     input.tier === 'allin' ? Math.round(input.vitality * 0.8 * 100) / 100 : TIER_STAKE[input.tier]!
   const bStake =
@@ -130,6 +135,7 @@ export async function createGoal(input: {
     .from('nodes')
     .insert({
       archive_id: input.archiveId,
+      user_id: user.id,
       kind: 'A',
       content: input.content,
       tier: input.tier,
@@ -144,6 +150,7 @@ export async function createGoal(input: {
   const children = [
     {
       archive_id: input.archiveId,
+      user_id: user.id,
       kind: 'B' as NodeKind,
       parent_id: (aNode as GameNode).id,
       content: input.reward.content,
@@ -154,6 +161,7 @@ export async function createGoal(input: {
     },
     {
       archive_id: input.archiveId,
+      user_id: user.id,
       kind: 'C' as NodeKind,
       parent_id: (aNode as GameNode).id,
       content: input.penalty.content,
@@ -193,6 +201,8 @@ export async function getNodes(archiveId: string): Promise<GameNode[]> {
  * 完成后调用 settleAll 推进复合体结算（若条件满足）
  */
 export async function completeNode(nodeId: string) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('未登录')
   const { data: node, error: fetchErr } = await supabase
     .from('nodes')
     .select('*')
@@ -209,6 +219,7 @@ export async function completeNode(nodeId: string) {
       .eq('id', nodeId)
     if (error) throw error
     const { error: ledErr } = await supabase.from('vitality_ledger').insert({
+      user_id: n.user_id ?? user.id,
       node_id: nodeId,
       archive_id: n.archive_id,
       reason: 'b_completed',
