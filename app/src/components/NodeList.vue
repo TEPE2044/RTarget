@@ -93,11 +93,8 @@ async function onConcede(id: string) {
           <span class="status">{{ statusText(g.b) }}</span>
         </div>
         <p class="content">{{ g.b.content }}</p>
-        <div v-if="g.b.status === 'active'" class="actions">
-          <button :disabled="busy" class="ok" @click="onComplete(g.b.id)">去做并完成</button>
-        </div>
-        <p v-else-if="g.b.status === 'bound'" class="locked-hint">A 达成后开启</p>
-        <p v-else class="done-hint">{{ g.b.completed_at ? '已享受 ✓' : '已过期作废' }}</p>
+        <p v-if="g.b.status === 'bound'" class="locked-hint">A 达成时自动奖励</p>
+        <p v-else class="done-hint">已奖励 {{ g.b.stake }} 分 ✓（去做吧）</p>
       </div>
 
       <div v-if="g.c" class="node c" :class="{ locked: g.c.status === 'bound', done: g.c.status === 'settled' }">

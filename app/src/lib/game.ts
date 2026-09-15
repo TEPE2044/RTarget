@@ -230,20 +230,35 @@ export async function completeNode(nodeId: string) {
     return
   }
 
-  // A：active → 完成，开启 B
+  // A：active → 完成，立刻奖励 B（B 分直接到账，无需点击确认）
   if (n.kind === 'A' && n.status === 'active') {
     const { error } = await supabase
       .from('nodes')
       .update({ status: 'settled', completed_at: new Date().toISOString() })
       .eq('id', nodeId)
     if (error) throw error
-    const { error: bErr } = await supabase
+    // B 立刻结算并加分（"立刻奖励"：A 达成即到账）
+    const { data: bNode, error: bFetchErr } = await supabase
       .from('nodes')
-      .update({ status: 'active' })
+      .select('*')
       .eq('parent_id', nodeId)
       .eq('kind', 'B')
       .eq('status', 'bound')
+      .single()
+    if (bFetchErr) throw bFetchErr
+    const { error: bErr } = await supabase
+      .from('nodes')
+      .update({ status: 'settled', completed_at: new Date().toISOString() })
+      .eq('id', (bNode as GameNode).id)
     if (bErr) throw bErr
+    const { error: ledErr } = await supabase.from('vitality_ledger').insert({
+      user_id: n.user_id,
+      node_id: (bNode as GameNode).id,
+      archive_id: n.archive_id,
+      reason: 'b_completed',
+      amount: (bNode as GameNode).stake,
+    })
+    if (ledErr) throw ledErr
     await settleAll()
     return
   }
