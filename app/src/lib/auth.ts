@@ -35,6 +35,13 @@ async function sendMagicLink(email: string) {
   sentMagicLink.value = true
 }
 
+// ---------- 邮箱密码登录（本地测试账号，绕开邮件限流） ----------
+
+async function signInWithPassword(email: string, password: string) {
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) throw error
+}
+
 async function signOut() {
   await supabase.auth.signOut()
 }
@@ -45,6 +52,7 @@ export function useAuth() {
     loading: readonly(loading),
     sentMagicLink: readonly(sentMagicLink),
     sendMagicLink,
+    signInWithPassword,
     signOut,
   }
 }
