@@ -64,10 +64,11 @@ async function onConcede(id: string) {
 
 <template>
   <a-space direction="vertical" style="width: 100%" :size="16">
-    <a-card v-for="g in groups" :key="g.a.id" :bordered="true" size="small"
+    <a-card v-for="g in groups" :key="g.a.id" :bordered="true"
+      :body-style="{ padding: '20px' }"
       :style="g.a.status === 'settled' && !g.a.completed_at ? { borderColor: '#ff4d4f' } : {}">
       <!-- A 节点 -->
-      <div>
+      <div class="node-block">
         <div class="flex items-center gap-2">
           <a-tag color="blue">目标</a-tag>
           <a-typography-text type="secondary" class="text-xs">{{ tierName[g.a.tier] }} · {{ g.a.stake }} 分</a-typography-text>
@@ -77,9 +78,9 @@ async function onConcede(id: string) {
             {{ isOverdue(g.a) ? '已超时（待结算）' : statusText(g.a) }}
           </a-typography-text>
         </div>
-        <p class="mt-2 mb-1 text-[15px]">{{ g.a.content }}</p>
+        <p class="content-line">{{ g.a.content }}</p>
         <a-typography-text type="secondary" class="text-xs">到期：{{ dueDateText(g.a) }}</a-typography-text>
-        <div v-if="g.a.compound_a_done !== null" class="mt-1">
+        <div v-if="g.a.compound_a_done !== null" style="margin-top: 4px">
           <a-typography-text type="warning" class="text-xs">
             复合体结算：A{{ g.a.compound_a_done ? '✓' : '✗' }} C{{ g.a.compound_c_done ? '✓' : '✗' }}
             <template v-if="g.a.compound_a_done && g.a.compound_c_done">（已返还）</template>
@@ -87,36 +88,36 @@ async function onConcede(id: string) {
             <template v-else>（无分）</template>
           </a-typography-text>
         </div>
-        <a-space class="mt-3">
-          <a-button v-if="canComplete(g.a)" type="primary" size="small" :disabled="busy" @click="onComplete(g.a.id)">完成</a-button>
+        <a-space style="margin-top: 12px">
+          <a-button v-if="canComplete(g.a)" type="primary" :disabled="busy" @click="onComplete(g.a.id)">完成</a-button>
           <a-popconfirm v-if="canConcede(g.a)" title="确认认输？效果等同超时判负。" ok-text="认输" cancel-text="取消" @confirm="onConcede(g.a.id)">
-            <a-button danger size="small" :disabled="busy">认输</a-button>
+            <a-button danger :disabled="busy">认输</a-button>
           </a-popconfirm>
         </a-space>
       </div>
 
-      <a-divider style="margin: 12px 0" dashed />
+      <a-divider style="margin: 16px 0" />
 
       <!-- B 节点 -->
-      <div v-if="g.b" :style="g.b.status === 'bound' ? { opacity: 0.55 } : {}">
+      <div v-if="g.b" class="node-block" :style="g.b.status === 'bound' ? { opacity: 0.55 } : {}">
         <div class="flex items-center gap-2">
           <a-tag color="green">奖励</a-tag>
           <a-typography-text type="secondary" class="text-xs">{{ tierName[g.b.tier] }} · {{ g.b.stake }} 分</a-typography-text>
           <a-typography-text type="secondary" class="ml-auto text-xs">{{ statusText(g.b) }}</a-typography-text>
         </div>
-        <p class="mt-2 mb-1 text-[15px]">{{ g.b.content }}</p>
+        <p class="content-line">{{ g.b.content }}</p>
         <a-typography-text v-if="g.b.status === 'bound'" type="secondary" class="text-xs">A 达成时自动加分</a-typography-text>
         <template v-else-if="g.b.status === 'active'">
-          <a-typography-text type="success" class="text-xs block">+{{ g.b.stake }} 分已到账，享受完点确认</a-typography-text>
-          <a-button type="primary" size="small" class="mt-2" :disabled="busy" @click="onComplete(g.b.id)">确认</a-button>
+          <a-typography-text type="success" class="text-xs" style="display: block; margin-bottom: 8px">+{{ g.b.stake }} 分已到账，享受完点确认</a-typography-text>
+          <a-button type="primary" :disabled="busy" @click="onComplete(g.b.id)">确认</a-button>
         </template>
         <a-typography-text v-else type="success" class="text-xs">已奖励 {{ g.b.stake }} 分 ✓ 已确认</a-typography-text>
       </div>
 
       <template v-if="g.c">
-        <a-divider style="margin: 12px 0" dashed />
+        <a-divider style="margin: 16px 0" />
         <!-- C 节点 -->
-        <div :style="g.c.status === 'bound' ? { opacity: 0.55 } : {}">
+        <div class="node-block" :style="g.c.status === 'bound' ? { opacity: 0.55 } : {}">
           <div class="flex items-center gap-2">
             <a-tag color="red">惩罚</a-tag>
             <a-typography-text type="secondary" class="text-xs">{{ tierName[g.c.tier] }} · {{ g.c.stake }} 分</a-typography-text>
@@ -126,12 +127,12 @@ async function onConcede(id: string) {
               {{ isOverdue(g.c) ? '已超时（待结算）' : statusText(g.c) }}
             </a-typography-text>
           </div>
-          <p class="mt-2 mb-1 text-[15px]">{{ g.c.content }}</p>
+          <p class="content-line">{{ g.c.content }}</p>
           <a-typography-text v-if="g.c.status === 'active'" type="secondary" class="text-xs">到期：{{ dueDateText(g.c) }}</a-typography-text>
-          <a-space v-if="g.c.status === 'active'" class="mt-3">
-            <a-button type="primary" size="small" :disabled="busy" @click="onComplete(g.c.id)">把拖延的事做掉</a-button>
+          <a-space v-if="g.c.status === 'active'" style="margin-top: 12px">
+            <a-button type="primary" :disabled="busy" @click="onComplete(g.c.id)">把拖延的事做掉</a-button>
             <a-popconfirm title="确认认输？效果等同超时判负。" ok-text="认输" cancel-text="取消" @confirm="onConcede(g.c.id)">
-              <a-button danger size="small" :disabled="busy">认输</a-button>
+              <a-button danger :disabled="busy">认输</a-button>
             </a-popconfirm>
           </a-space>
           <a-typography-text v-else-if="g.c.status === 'bound'" type="secondary" class="text-xs">A 判负后开启</a-typography-text>
@@ -143,3 +144,11 @@ async function onConcede(id: string) {
     <a-empty v-if="groups.length === 0" description="还没有目标。设一个，配好奖罚。" />
   </a-space>
 </template>
+
+<style scoped>
+.content-line {
+  font-size: 15px;
+  margin: 8px 0 4px;
+  line-height: 1.6;
+}
+</style>
