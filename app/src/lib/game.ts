@@ -108,25 +108,23 @@ export async function getArchives(): Promise<Archive[]> {
 }
 
 /**
- * 设立目标：A + 预绑 B + 预绑 C，三节点原子写入（ALL IN 档位 stake 为活力值×0.8 快照）
- * B/C 的 due_at 在设立时先设为 A 的 due_at（开启时由 UI 引导用户重设，或直接沿用）
+ * 设立目标：A + 预绑 B + 预绑 C，三节点原子写入
+ * 档位继承（需求变更）：B/C 无独立档位，分值 = A 的档位分值（ALL IN 同样继承快照）
+ * B/C 的 due_at 继承 A 的（B 无时限约束，due_at 仅作展示）
  */
 export async function createGoal(input: {
   archiveId: string
   content: string
   tier: Tier
   dueAt: string
-  reward: { content: string; tier: Tier; dueAt?: string }
-  penalty: { content: string; tier: Tier; dueAt?: string }
+  reward: { content: string }
+  penalty: { content: string }
   vitality: number
 }): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('未登录')
   // 活力值四舍五入取整（文档 v1.0：不要小数点）
-  const allinStake = Math.round(input.vitality * 0.8)
-  const stake = input.tier === 'allin' ? allinStake : TIER_STAKE[input.tier]!
-  const bStake = input.reward.tier === 'allin' ? allinStake : TIER_STAKE[input.reward.tier]!
-  const cStake = input.penalty.tier === 'allin' ? allinStake : TIER_STAKE[input.penalty.tier]!
+  const stake = input.tier === 'allin' ? Math.round(input.vitality * 0.8) : TIER_STAKE[input.tier]!
 
   const { data: aNode, error: aErr } = await supabase
     .from('nodes')
@@ -144,6 +142,7 @@ export async function createGoal(input: {
     .single()
   if (aErr) throw aErr
 
+  // B/C 继承 A 的档位与分值
   const children = [
     {
       archive_id: input.archiveId,
@@ -151,9 +150,9 @@ export async function createGoal(input: {
       kind: 'B' as NodeKind,
       parent_id: (aNode as GameNode).id,
       content: input.reward.content,
-      tier: input.reward.tier,
-      stake: bStake,
-      due_at: input.reward.dueAt ?? input.dueAt,
+      tier: input.tier,
+      stake,
+      due_at: input.dueAt,
       status: 'bound' as NodeStatus, // A 达成前 B 处于 bound
     },
     {
@@ -162,9 +161,9 @@ export async function createGoal(input: {
       kind: 'C' as NodeKind,
       parent_id: (aNode as GameNode).id,
       content: input.penalty.content,
-      tier: input.penalty.tier,
-      stake: cStake,
-      due_at: input.penalty.dueAt ?? input.dueAt,
+      tier: input.tier,
+      stake,
+      due_at: input.dueAt,
       status: 'bound' as NodeStatus, // A 判负前 C 处于 bound
     },
   ]
@@ -208,33 +207,25 @@ export async function completeNode(nodeId: string) {
   if (fetchErr) throw fetchErr
   const n = node as GameNode
 
-  // B：立刻兑现奖励
+  // B：确认享受完毕（分早已到账，这里只是记账标记，无时限）
   if (n.kind === 'B' && n.status === 'active') {
     const { error } = await supabase
       .from('nodes')
       .update({ status: 'settled', completed_at: new Date().toISOString() })
       .eq('id', nodeId)
     if (error) throw error
-    const { error: ledErr } = await supabase.from('vitality_ledger').insert({
-      user_id: n.user_id ?? user.id,
-      node_id: nodeId,
-      archive_id: n.archive_id,
-      reason: 'b_completed',
-      amount: Math.round(n.stake),
-    })
-    if (ledErr) throw ledErr
     await settleAll()
     return
   }
 
-  // A：active → 完成，立刻奖励 B（B 分直接到账，无需点击确认）
+  // A：active → 完成，立刻奖励 B（分先到账，B 等待用户点"确认"标记，无时限）
   if (n.kind === 'A' && n.status === 'active') {
     const { error } = await supabase
       .from('nodes')
       .update({ status: 'settled', completed_at: new Date().toISOString() })
       .eq('id', nodeId)
     if (error) throw error
-    // B 立刻结算并加分（"立刻奖励"：A 达成即到账）
+    // B 开启为 active（待确认），同时立刻加分
     const { data: bNode, error: bFetchErr } = await supabase
       .from('nodes')
       .select('*')
@@ -245,7 +236,7 @@ export async function completeNode(nodeId: string) {
     if (bFetchErr) throw bFetchErr
     const { error: bErr } = await supabase
       .from('nodes')
-      .update({ status: 'settled', completed_at: new Date().toISOString() })
+      .update({ status: 'active' })
       .eq('id', (bNode as GameNode).id)
     if (bErr) throw bErr
     const { error: ledErr } = await supabase.from('vitality_ledger').insert({
@@ -253,7 +244,7 @@ export async function completeNode(nodeId: string) {
       node_id: (bNode as GameNode).id,
       archive_id: n.archive_id,
       reason: 'b_completed',
-      amount: (bNode as GameNode).stake,
+      amount: Math.round((bNode as GameNode).stake),
     })
     if (ledErr) throw ledErr
     await settleAll()

@@ -102,8 +102,15 @@ async function onConcede(id: string) {
           <span class="ml-auto text-slate-500">{{ statusText(g.b) }}</span>
         </div>
         <p class="mt-2 text-[15px] text-slate-200">{{ g.b.content }}</p>
-        <p v-if="g.b.status === 'bound'" class="mt-2 text-xs text-slate-600">A 达成时自动奖励</p>
-        <p v-else class="mt-2 text-xs text-emerald-500">已奖励 {{ g.b.stake }} 分 ✓（去做吧）</p>
+        <p v-if="g.b.status === 'bound'" class="mt-2 text-xs text-slate-600">A 达成时自动加分</p>
+        <template v-else-if="g.b.status === 'active'">
+          <p class="mt-2 text-xs text-emerald-500">+{{ g.b.stake }} 分已到账，享受完点确认</p>
+          <div class="mt-2">
+            <button :disabled="busy" @click="onComplete(g.b.id)"
+              class="px-3.5 py-1.5 text-sm rounded-md bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-200 border border-emerald-700/50 transition disabled:opacity-40">确认</button>
+          </div>
+        </template>
+        <p v-else class="mt-2 text-xs text-emerald-500">已奖励 {{ g.b.stake }} 分 ✓ 已确认</p>
       </div>
 
       <!-- C 节点 -->

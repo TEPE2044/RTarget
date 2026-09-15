@@ -107,8 +107,8 @@ const goalForm = ref({
   content: '',
   tier: 'low' as Tier,
   dueDate: tomorrowStr,
-  reward: { content: '', tier: 'low' as Tier },
-  penalty: { content: '', tier: 'low' as Tier },
+  reward: { content: '' },
+  penalty: { content: '' },
 })
 
 async function addGoal() {
@@ -127,20 +127,17 @@ async function addGoal() {
       dueAt,
       reward: {
         content: goalForm.value.reward.content.trim(),
-        tier: goalForm.value.reward.tier,
       },
       penalty: {
         content: goalForm.value.penalty.content.trim(),
-        tier: goalForm.value.penalty.tier,
-        dueAt,
       },
       vitality: vitality.value,
     })
     showGoalForm.value = false
     goalForm.value = {
       content: '', tier: 'low', dueDate: tomorrowStr,
-      reward: { content: '', tier: 'low' },
-      penalty: { content: '', tier: 'low' },
+      reward: { content: '' },
+      penalty: { content: '' },
     }
     await refresh()
   } catch (e) {
@@ -241,31 +238,13 @@ async function onSeal() {
               </label>
             </div>
 
-            <h4 class="text-sm font-semibold text-emerald-400">奖励 B（想做的事 · A 达成立刻加分）</h4>
+            <h4 class="text-sm font-semibold text-emerald-400">奖励 B（想做的事 · 档位继承 A）</h4>
             <input v-model="goalForm.reward.content" placeholder="做成 A 后想做的事" required
               class="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
-            <label class="flex-1 flex flex-col gap-1 text-xs text-slate-400 w-48">档位
-              <select v-model="goalForm.reward.tier"
-                class="bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
-                <option value="low">低（5 分）</option>
-                <option value="mid">中（10 分）</option>
-                <option value="high">高（20 分）</option>
-                <option value="allin">ALL IN（80% 活力值）</option>
-              </select>
-            </label>
 
-            <h4 class="text-sm font-semibold text-rose-400">惩罚 C（一直拖延的事 · A 判负后开启）</h4>
+            <h4 class="text-sm font-semibold text-rose-400">惩罚 C（一直拖延的事 · 档位继承 A）</h4>
             <input v-model="goalForm.penalty.content" placeholder="如果没做成，被强制面对的事" required
               class="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
-            <label class="flex-1 flex flex-col gap-1 text-xs text-slate-400 w-48">档位
-              <select v-model="goalForm.penalty.tier"
-                class="bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
-                <option value="low">低（5 分）</option>
-                <option value="mid">中（10 分）</option>
-                <option value="high">高（20 分）</option>
-                <option value="allin">ALL IN（80% 活力值）</option>
-              </select>
-            </label>
 
             <div class="flex gap-3 pt-2">
               <button type="submit" :disabled="busy"
