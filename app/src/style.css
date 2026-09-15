@@ -1,1 +1,233 @@
 @import "tailwindcss";
+
+/* ============================================================
+   RTarget 设计系统
+   约定的硬规则：字重只有 400 / 500 两档，边框统一 0.5px，
+   圆角 8px（组件）/ 12px（卡片），正文 13px、次要信息 12px。
+   深浅色全部走 CSS 变量，切主题只换 [data-theme]。
+   ============================================================ */
+
+:root {
+  --rt-bg: #f5f5f5;
+  --rt-card: #ffffff;
+  --rt-sub: #fafafa;
+  --rt-hover: rgba(0, 0, 0, 0.04);
+  --rt-line: rgba(0, 0, 0, 0.10);
+  --rt-line-strong: rgba(0, 0, 0, 0.18);
+  --rt-tx: rgba(0, 0, 0, 0.88);
+  --rt-tx2: rgba(0, 0, 0, 0.55);
+  --rt-tx3: rgba(0, 0, 0, 0.38);
+
+  --rt-blue: #185FA5;   --rt-blue-bg: #E6F1FB;
+  --rt-green: #3B6D11;  --rt-green-bg: #EAF3DE;
+  --rt-amber: #854F0B;  --rt-amber-bg: #FAEEDA;
+  --rt-red: #A32D2D;    --rt-red-bg: #FCEBEB;
+  --rt-gray: #5F5E5A;   --rt-gray-bg: #F1EFE8;
+
+  --rt-rail-blue: #378ADD;
+  --rt-rail-green: #639922;
+  --rt-rail-amber: #EF9F27;
+  --rt-rail-gray: #B4B2A9;
+  --rt-dot: #E24B4A;
+}
+
+[data-theme='dark'] {
+  --rt-bg: #141414;
+  --rt-card: #1d1d1d;
+  --rt-sub: #262626;
+  --rt-hover: rgba(255, 255, 255, 0.06);
+  --rt-line: rgba(255, 255, 255, 0.12);
+  --rt-line-strong: rgba(255, 255, 255, 0.24);
+  --rt-tx: rgba(255, 255, 255, 0.88);
+  --rt-tx2: rgba(255, 255, 255, 0.60);
+  --rt-tx3: rgba(255, 255, 255, 0.42);
+
+  --rt-blue: #85B7EB;   --rt-blue-bg: rgba(55, 138, 221, 0.20);
+  --rt-green: #97C459;  --rt-green-bg: rgba(99, 153, 34, 0.20);
+  --rt-amber: #FAC775;  --rt-amber-bg: rgba(239, 159, 39, 0.18);
+  --rt-red: #F09595;    --rt-red-bg: rgba(226, 75, 74, 0.20);
+  --rt-gray: #B4B2A9;   --rt-gray-bg: rgba(255, 255, 255, 0.08);
+}
+
+body { background: var(--rt-bg); }
+
+/* ---------- 页面骨架 ---------- */
+
+.rt {
+  min-height: 100vh;
+  background: var(--rt-bg);
+  color: var(--rt-tx);
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+.rt-main { max-width: 1080px; margin: 0 auto; padding: 20px 24px 56px; }
+
+/* 登录页外壳（LoginCard 用） */
+.app-bg {
+  min-height: 100vh;
+  background: var(--rt-bg);
+  color: var(--rt-tx);
+}
+
+.rt-top {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 24px;
+  background: var(--rt-card);
+  border-bottom: 0.5px solid var(--rt-line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.rt-brand { font-size: 15px; font-weight: 500; letter-spacing: 0.02em; }
+.rt-topright { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.rt-nav { display: flex; gap: 2px; }
+.rt-navbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border: none; border-radius: 8px;
+  background: transparent; color: var(--rt-tx2);
+  font-size: 13px; cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.rt-navbtn:hover { background: var(--rt-hover); color: var(--rt-tx); }
+.rt-navbtn.active { background: var(--rt-blue-bg); color: var(--rt-blue); font-weight: 500; }
+.rt-navnum { font-size: 12px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+/* ---------- 文字 ---------- */
+
+.rt-meta { font-size: 12px; color: var(--rt-tx3); }
+.rt-num { font-variant-numeric: tabular-nums; }
+.rt-sec { font-size: 14px; font-weight: 500; margin: 0; }
+.rt-t14 { font-size: 14px; }
+.rt-t14s { font-size: 14px; font-weight: 500; }
+.rt-push { margin-left: auto; }
+
+/* ---------- 按钮 ---------- */
+
+.rbtn {
+  padding: 4px 12px; border-radius: 6px;
+  border: 0.5px solid var(--rt-line-strong);
+  background: transparent; color: var(--rt-tx2);
+  font-size: 12px; cursor: pointer; white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.rbtn:hover:not(:disabled) { background: var(--rt-hover); color: var(--rt-tx); }
+.rbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.rbtn-primary {
+  padding: 4px 12px; border-radius: 6px; border: none;
+  background: var(--rt-tx); color: var(--rt-card);
+  font-size: 12px; cursor: pointer; white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.rbtn-primary:hover:not(:disabled) { opacity: 0.85; }
+.rbtn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.rbtn-lg { padding: 6px 16px; font-size: 13px; }
+.rbtn-danger:hover:not(:disabled) { color: var(--rt-red); border-color: var(--rt-red); }
+
+/* ---------- 卡片与色轨 ---------- */
+
+.rt-card {
+  background: var(--rt-card);
+  border: 0.5px solid var(--rt-line);
+  border-radius: 12px;
+}
+.rt-cardwrap { display: flex; overflow: hidden; }
+.rt-rail { flex: 0 0 3px; align-self: stretch; }
+.rt-rail-blue { background: var(--rt-rail-blue); }
+.rt-rail-green { background: var(--rt-rail-green); }
+.rt-rail-amber { background: var(--rt-rail-amber); }
+.rt-rail-gray { background: var(--rt-rail-gray); }
+
+/* ---------- 状态 pill ---------- */
+
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 1px 8px; border-radius: 999px;
+  font-size: 12px; white-space: nowrap;
+}
+.p-blue { background: var(--rt-blue-bg); color: var(--rt-blue); }
+.p-green { background: var(--rt-green-bg); color: var(--rt-green); }
+.p-amber { background: var(--rt-amber-bg); color: var(--rt-amber); }
+.p-red { background: var(--rt-red-bg); color: var(--rt-red); }
+.p-gray { background: var(--rt-gray-bg); color: var(--rt-gray); }
+
+/* ---------- 目标卡内的节点行 ---------- */
+
+.rt-node { display: flex; gap: 12px; }
+.rt-node-lbl { flex: 0 0 32px; font-size: 12px; color: var(--rt-tx3); padding-top: 2px; }
+.rt-node-body { flex: 1; min-width: 0; }
+.rt-line1 { display: flex; align-items: center; gap: 8px; }
+.rt-line2 { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.rt-sep { border: none; border-top: 0.5px solid var(--rt-line); margin: 14px 0 14px 44px; }
+
+/* ---------- 存档页签 ---------- */
+
+.rt-chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.rt-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: none; border-radius: 8px;
+  background: transparent; color: var(--rt-tx2);
+  font-size: 13px; cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.rt-chip:hover { background: var(--rt-hover); color: var(--rt-tx); }
+.rt-chip.active { background: var(--rt-sub); color: var(--rt-tx); font-weight: 500; }
+.rt-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--rt-dot); }
+
+/* ---------- 工具栏 / 统计条 / 双列 ---------- */
+
+.rt-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.rt-strip { display: flex; padding: 16px 0; }
+.rt-strip > * { flex: 1; min-width: 0; padding: 0 20px; border-right: 0.5px solid var(--rt-line); }
+.rt-strip > *:last-child { border-right: none; }
+.rt-strip-val { margin: 2px 0 0; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.rt-cols { display: flex; gap: 12px; align-items: flex-start; }
+.rt-col { flex: 1; min-width: 0; }
+@media (max-width: 880px) {
+  .rt-cols { flex-direction: column; }
+  .rt-strip { flex-wrap: wrap; gap: 12px 0; }
+  .rt-strip > * { flex: 1 1 40%; }
+}
+
+.rt-li { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+.rt-li + .rt-li { border-top: 0.5px solid var(--rt-line); }
+.rt-li-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rt-pad { padding: 14px 18px; }
+.rt-pad-lg { padding: 16px 18px; }
+.rt-gap12 { margin-top: 12px; }
+.rt-gap8 { margin-top: 8px; }
+
+/* ---------- 三选一（C 死线：A 之后 1~3 天） ---------- */
+
+.rt-seg { display: flex; gap: 6px; }
+
+.rt-segbtn {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 12px;
+  border: 0.5px solid var(--rt-line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rt-tx2);
+  font-size: 13px; cursor: pointer; text-align: left;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.rt-segbtn:hover { background: var(--rt-hover); color: var(--rt-tx); }
+.rt-segbtn.active {
+  border-color: var(--rt-blue);
+  background: var(--rt-blue-bg);
+  color: var(--rt-blue);
+  font-weight: 500;
+}
+.rt-segbtn.active .rt-meta { color: var(--rt-blue); opacity: 0.85; }
