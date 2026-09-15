@@ -1,8 +1,12 @@
 -- ============================================================
 -- 0007: 活力值强制整数（文档 v1.0：四舍五入，不要小数点）
--- 1) 列类型 numeric → integer（存量数据四舍五入迁移）
--- 2) 流水 amount 永远是整数，前端 SUM 后也必然是整数
+-- 1) 先删物化视图 vitality_current（它依赖 amount 列，挡住 ALTER）
+-- 2) 列类型 numeric → integer（存量数据四舍五入迁移）
+-- 3) 重建物化视图
+-- 4) 封档函数同步取整版重建
 -- ============================================================
+
+drop materialized view if exists vitality_current;
 
 -- 存量小数四舍五入
 update vitality_ledger set amount = round(amount) where amount <> round(amount);
@@ -10,7 +14,13 @@ update vitality_ledger set amount = round(amount) where amount <> round(amount);
 -- 改列类型
 alter table vitality_ledger alter column amount type integer using round(amount)::int;
 
--- 封档函数同步取整版重建（保持一致）
+-- 重建物化视图
+create materialized view vitality_current as
+  select user_id, sum(amount) as vitality
+  from vitality_ledger
+  group by user_id;
+
+-- 封档函数（返回 integer，扣分取整）
 create or replace function seal_archive(p_archive_id uuid)
 returns integer language plpgsql security definer set search_path = public as $$
 declare
