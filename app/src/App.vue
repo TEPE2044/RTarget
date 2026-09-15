@@ -215,8 +215,9 @@ async function onSeal() {
               + 设一个新目标
             </a-button>
 
-            <a-form v-else class="p-5 rounded-lg card-bg border" layout="vertical" @submit.prevent="addGoal">
-              <a-typography-title :level="5">目标 A（押注）</a-typography-title>
+            <a-form v-else layout="vertical" class="card-bg border"
+              style="padding: 24px; border-radius: 8px" @submit.prevent="addGoal">
+              <a-typography-title :level="5" style="margin-top: 0">目标 A（押注）</a-typography-title>
               <a-form-item>
                 <a-input v-model:value="goalForm.content" placeholder="这件事是什么" />
               </a-form-item>
