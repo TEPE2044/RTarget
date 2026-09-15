@@ -99,14 +99,22 @@ function dueDateToISO(dateStr: string): string {
   return d.toISOString()
 }
 
-const today = new Date()
-const tomorrowStr = new Date(today.getTime() + 86400_000).toISOString().slice(0, 10)
+// 到期日最早 = 明天（今天 0 点已过，选今天等于立即判负，无意义）
+function localDateStr(offsetDays: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+const minDueDate = localDateStr(1)
 
 const showGoalForm = ref(false)
 const goalForm = ref({
   content: '',
   tier: 'low' as Tier,
-  dueDate: tomorrowStr,
+  dueDate: minDueDate,
   reward: { content: '' },
   penalty: { content: '' },
 })
@@ -135,7 +143,7 @@ async function addGoal() {
     })
     showGoalForm.value = false
     goalForm.value = {
-      content: '', tier: 'low', dueDate: tomorrowStr,
+      content: '', tier: 'low', dueDate: minDueDate,
       reward: { content: '' },
       penalty: { content: '' },
     }
@@ -233,7 +241,7 @@ async function onSeal() {
                 </select>
               </label>
               <label class="flex-1 flex flex-col gap-1 text-xs text-slate-400">到期日（0 点结算）
-                <input v-model="goalForm.dueDate" type="date" required
+                <input v-model="goalForm.dueDate" type="date" required :min="minDueDate"
                   class="bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500" />
               </label>
             </div>
