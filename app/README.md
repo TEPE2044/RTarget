@@ -95,7 +95,8 @@ npx @capacitor/assets generate --android    # 分发成 148 个各密度资源
 
 ```bash
 npm run cap:sync                        # 先把最新的 web 产物同步进原生工程
-cd android && ./gradlew assembleDebug   # 产物：android/app/build/outputs/apk/debug/
+cd android && ./gradlew assembleDebug
+# 产物：android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 也可以直接在 Android Studio 里 Run（`npm run cap:android` 会帮你打开）。
@@ -106,6 +107,35 @@ cd android && ./gradlew assembleDebug   # 产物：android/app/build/outputs/apk
   `C:\Users\admin\AppData\Local\Android\Sdk`，正好带 `android-36` 和 `build-tools 36.1.0`）
 - `android/local.properties` 里的 `sdk.dir` —— **这个文件不进 git**（每台机器路径不同），
   换机器要重写一次
+
+> 改完前端**必须先 `cap:sync` 再打包**，否则 APK 里还是旧的 web 代码。
+> 校验方法：比对 `dist/assets/index-*.js` 的文件名和 APK 里 `assets/public/assets/` 下的文件名。
+
+#### 国内镜像（重要）
+
+默认的 `services.gradle.org` 在国内下不动（实测下到 178MB 就停住），所以换了两处：
+
+| 位置 | 改动 |
+|---|---|
+| `gradle/wrapper/gradle-wrapper.properties` | `distributionUrl` → 腾讯云镜像 |
+| `build.gradle` | 两个 `repositories` 里把阿里云（google / public）排在前面，`google()` / `mavenCentral()` 留作兜底 |
+
+要换回官方：`distributionUrl` 改回
+`https\://services.gradle.org/distributions/gradle-8.14.3-all.zip`，
+再删掉 `build.gradle` 里那两行 `maven { url "https://maven.aliyun.com/..." }`。
+
+#### 内存（踩过的坑）
+
+`gradle.properties` 里把堆从模板默认的 `-Xmx1536m` 调到 `2048m`，并加了
+`org.gradle.workers.max=2`。原因：这台机器同时开着 Android Studio 等大件，
+dex 阶段峰值内存不够时 Gradle 守护进程会**无声无息地消失** ——
+日志戛然而止、没有 OOM 堆栈，只有一句 `Gradle build daemon disappeared unexpectedly`。
+
+遇到这个报错按顺序处理：
+
+1. `./gradlew --stop` 停掉残留守护进程（能立刻放掉 1~2 GB）
+2. 关掉不用的内存大户（Android Studio、多余的浏览器）
+3. 重跑 —— 已编译的部分会命中缓存，通常几十秒就过
 
 ### 魔法链接登录（深链）
 
