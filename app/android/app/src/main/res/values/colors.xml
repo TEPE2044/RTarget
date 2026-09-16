@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动画面底色。必须与 assets/splash.png 里的背景一致，
+         否则 Android 12+ 的系统启动画面会和它自己的窗口背景闪出两层色。 -->
+    <color name="splashBackground">#F5F5F5</color>
+</resources>

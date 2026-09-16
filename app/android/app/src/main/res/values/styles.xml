@@ -16,7 +16,15 @@
     </style>
 
 
+    <!-- 启动画面主题。
+         android:background 是给 Android 11 及以下用的（整张 splash.png 铺满）。
+         windowSplashScreen* 是 Android 12+ 的规范：系统只画"背景色 + 一个居中图标"，
+         所以这里必须显式给图标和背景色，否则会退回系统默认（并在切到应用窗口时闪一下）。
+         postSplashScreenTheme 不能省 —— 少了它应用可能一直停在启动主题上。 -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/splashBackground</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

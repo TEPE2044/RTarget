@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { theme as antdTheme, message } from 'ant-design-vue'
 import { isAuthError, useAuth } from './lib/auth'
+import { registerBackButton, syncStatusBar } from './lib/native'
 import { useTheme } from './lib/theme'
 import {
   settleAll, getVitality, getLedger, getArchives, getAllNodes,
@@ -146,10 +147,24 @@ async function refresh() {
 
 onMounted(() => {
   timer = setInterval(() => (now.value = new Date()), 1000) // 顶栏时钟走秒
+
+  // 只有装进壳里才生效，浏览器上是空操作
+  registerBackButton({
+    hasModalOpen: () => showNewArchive.value || showGoalForm.value,
+    closeModal: () => {
+      showNewArchive.value = false
+      showGoalForm.value = false
+    },
+    currentPage: () => page.value,
+    goHome: () => { page.value = 'home' },
+  })
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)
 })
+
+// 壳里让状态栏图标跟着深浅主题走（浏览器上无副作用）
+watch(theme, (t) => syncStatusBar(t), { immediate: true })
 
 watch(session, (s) => {
   if (s) refresh()
