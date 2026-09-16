@@ -50,6 +50,8 @@ export function friendlyError(e: unknown): string {
   const map: [RegExp, string][] = [
     [/rate limit|too many requests/i, '发送太频繁了 —— Supabase 限制每个邮箱 60 秒一次，等一会儿再试'],
     [/token has expired or is invalid/i, '验证码不对或已过期，重新发一个吧'],
+    [/invalid.*(otp|token)|otp.*(expired|invalid)/i, '验证码不对或已过期，重新发一个吧'],
+    [/auth session missing|session.*missing|not authenticated/i, '登录态已失效，重新验证一次邮箱'],
     [/invalid login credentials/i, '邮箱或密码不对'],
     [/email not confirmed/i, '这个邮箱还没验证过，请用「邮箱验证码」走一遍'],
     [/user already registered/i, '这个邮箱已经注册过了，直接用密码登录，或走验证码重设密码'],

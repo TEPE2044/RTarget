@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { friendlyError, useAuth } from '../lib/auth'
 
@@ -93,13 +93,20 @@ function startPwdWindow() {
   }, 1000)
 }
 
-// 会话建立了但密码还没设（App.vue 会因此继续显示本组件）→ 钉在设密码那一步
-watch(passwordPending, (v) => {
-  if (!v) return
+/**
+ * 兜底：万一组件重新挂载时"会话已建立、密码还没设"，直接钉在设密码那步。
+ *
+ * 注意这里**不能改成 watch(passwordPending)** —— 那样会出大 bug：
+ * verifyCode 为了避免闪屏，是「先把 passwordPending 立起来、再去验证」的，
+ * 所以 watcher 会在验证还没出结果时就把界面推到"设密码"，
+ * 一旦验证失败（验证码乱输），界面就停在设密码那步了 —— 看着像"乱输也能过"。
+ * 推进步骤只能由 doVerify 在**确实成功之后**自己做。
+ */
+if (passwordPending.value) {
   mode.value = 'code'
   step.value = 'password'
   startPwdWindow()
-}, { immediate: true })
+}
 
 function switchMode(m: Mode) {
   if (mode.value === m) return
@@ -155,10 +162,15 @@ async function doVerify() {
   busy.value = true
   try {
     await verifyCode(email.value, token.value)
+    // 只有真的验证通过才推进 —— 见上面那段注释，这里不能省
     step.value = 'password'
     startPwdWindow()
   } catch (e) {
     error.value = friendlyError(e)
+    // 验证失败必须把界面退回输码那一步，并停掉已经开始的倒计时
+    step.value = 'verify'
+    clearTimers()
+    startCooldown()
   } finally {
     busy.value = false
   }
@@ -168,6 +180,11 @@ async function doSetPassword() {
   error.value = ''
   if (pwd1.value.length < 6) return (error.value = '密码至少 6 位')
   if (pwd1.value !== pwd2.value) return (error.value = '两次输的不一样')
+  // 不靠界面状态保证安全：没有"验证过"的会话就不允许设密码
+  if (!passwordPending.value && !props.devPreview) {
+    step.value = 'verify'
+    return (error.value = '还没验证邮箱，先输一次验证码')
+  }
 
   busy.value = true
   try {
@@ -212,13 +229,12 @@ async function doLogin() {
         <div class="rt-seg" style="margin-bottom: 16px">
           <button type="button" class="rt-segbtn" :class="{ active: mode === 'login' }"
             @click="switchMode('login')">
-            <span>登录</span>
-            <span class="rt-meta">用密码</span>
+            <span class="rt-meta">账号密码登录</span>
           </button>
           <button type="button" class="rt-segbtn" :class="{ active: mode === 'code' }"
             @click="switchMode('code')">
-            <span>邮箱验证码</span>
-            <span class="rt-meta">注册 / 忘密码</span>
+            <span class="rt-meta">邮箱验证码登录</span>
+            
           </button>
         </div>
 
@@ -237,7 +253,7 @@ async function doLogin() {
             {{ busy ? '登录中…' : '登录' }}
           </button>
           <p class="rt-meta" style="margin: 12px 0 0">
-            忘了密码？切到上面的「邮箱验证码」，验证完直接重设。
+            忘了密码？切换至「邮箱验证码」即可解决！
           </p>
         </a-form>
 
@@ -251,9 +267,9 @@ async function doLogin() {
             :disabled="busy || !email" @click="doSendCode()">
             {{ busy ? '发送中…' : '发送验证码' }}
           </button>
-          <p class="rt-meta" style="margin: 12px 0 0">
+          <!-- <p class="rt-meta" style="margin: 12px 0 0">
             第一次填就是注册。验证码通过后会让你设密码，设完手机和网页都能用密码登录。
-          </p>
+          </p> -->
         </a-form>
 
         <!-- ============ 验证码 第 2 步：输 6 位码 ============ -->
@@ -305,9 +321,6 @@ async function doLogin() {
         <p v-if="shownError" class="rt-login-err">{{ shownError }}</p>
       </div>
 
-      <p class="rt-meta" style="text-align: center; margin: 14px 0 0">
-        单机自用 · 邮箱只用来验证身份，不发别的
-      </p>
     </div>
   </div>
 </template>
