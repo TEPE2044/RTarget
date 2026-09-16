@@ -174,7 +174,7 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
             <button class="rbtn-primary rbtn-lg">+ 设一个新目标</button>
           </div>
         </div>
-        <p class="rt-meta" style="margin: 8px 0 14px">红点 = 这个档还有没了结的事</p>
+        <p class="rt-meta" style="margin: 8px 0 14px">红点表示这个存档里还有事没做完</p>
 
         <NodeList :nodes="openNodes" variant="open" />
       </template>

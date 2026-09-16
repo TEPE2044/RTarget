@@ -301,7 +301,7 @@ async function onConcede(n: GameNode, tip: string) {
                       </a-popconfirm>
                     </span>
                   </template>
-                  <span v-else class="rt-meta">{{ g.c.completed_at ? '已了结' : '复合体已结算（未做）' }}</span>
+                  <span v-else class="rt-meta">{{ g.c.completed_at ? '已完成' : '未完成' }}</span>
                 </div>
               </div>
             </div>

@@ -196,7 +196,7 @@ async function onSeal() {
     message.success(
       deducted < 0
         ? `已封档，扣除 ${Math.abs(deducted)} 点活力值`
-        : '已封档 —— 全部了结，免费'
+        : '已封档 —— 全部完成，免费'
     )
     activeArchiveId.value = null
     await refresh()
@@ -463,7 +463,7 @@ function archiveGoalCount(id: string): number {
             </div>
             <button class="rbtn" @click="showNewArchive = true">+ 新档</button>
             <div class="rt-push" style="display: flex; gap: 8px">
-              <a-popconfirm v-if="activeArchive" title="封档？有未了结之事将扣当前活力值 10%"
+              <a-popconfirm v-if="activeArchive" title="封档？这个存档里还有事没做完，将扣当前活力值 10%"
                 ok-text="封档" cancel-text="取消" @confirm="onSeal()">
                 <button class="rbtn rbtn-danger" :disabled="busy">封档</button>
               </a-popconfirm>
@@ -471,7 +471,7 @@ function archiveGoalCount(id: string): number {
                 @click="showGoalForm = true">+ 设一个新目标</button>
             </div>
           </div>
-          <p class="rt-meta" style="margin: 8px 0 14px">红点 = 这个档还有没了结的事</p>
+          <p class="rt-meta" style="margin: 8px 0 14px">红点表示这个存档里还有事没做完</p>
 
           <NodeList :nodes="nodes" :busy="busy" variant="open" @refresh="refresh" />
         </section>
@@ -480,7 +480,7 @@ function archiveGoalCount(id: string): number {
         <section v-else>
           <div class="rt-line1" style="margin-bottom: 12px">
             <span class="rt-sec">封档记录</span>
-            <span class="rt-meta">{{ sealedArchives.length }} 个档</span>
+            <span class="rt-meta">{{ sealedArchives.length }} 个存档</span>
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 10px">
@@ -505,7 +505,7 @@ function archiveGoalCount(id: string): number {
                     <span class="rt-num" style="font-size: 13px; color: var(--rt-tx)">{{ archiveGoalCount(a.id) }}</span> 个
                   </span>
                   <span class="rt-meta">封档
-                    <span v-if="a.sealed_free" class="rt-num" style="font-size: 13px; color: var(--rt-green)">免费（全部了结）</span>
+                    <span v-if="a.sealed_free" class="rt-num" style="font-size: 13px; color: var(--rt-green)">免费（全部完成）</span>
                     <span v-else class="rt-num" style="font-size: 13px; color: var(--rt-red)">
                       扣 {{ Math.abs(findSealPenalty(ledger, a.id) ?? 0) }} 分
                     </span>
