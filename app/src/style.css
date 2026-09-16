@@ -55,6 +55,7 @@ body { background: var(--rt-bg); }
 
 .rt {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--rt-bg);
   color: var(--rt-tx);
   font-size: 13px;
@@ -63,20 +64,24 @@ body { background: var(--rt-bg); }
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
-.rt-main { max-width: 1080px; margin: 0 auto; padding: 20px 24px 56px; }
-
-/* 登录页外壳（LoginCard 用） */
-.app-bg {
-  min-height: 100vh;
-  background: var(--rt-bg);
-  color: var(--rt-tx);
+.rt-main {
+  max-width: 1080px;
+  margin: 0 auto;
+  /* 左右与底部留出安全区，避免被刘海/手势条压住 */
+  padding: 20px calc(24px + env(safe-area-inset-right, 0px))
+    calc(56px + env(safe-area-inset-bottom, 0px))
+    calc(24px + env(safe-area-inset-left, 0px));
 }
 
 .rt-top {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 12px 24px;
+  /* 顶部把状态栏高度让出来（套壳时 env() 才有值） */
+  padding: calc(12px + env(safe-area-inset-top, 0px))
+    calc(24px + env(safe-area-inset-right, 0px))
+    12px
+    calc(24px + env(safe-area-inset-left, 0px));
   background: var(--rt-card);
   border-bottom: 0.5px solid var(--rt-line);
   position: sticky;
@@ -86,6 +91,19 @@ body { background: var(--rt-bg); }
 
 .rt-brand { font-size: 15px; font-weight: 500; letter-spacing: 0.02em; }
 .rt-topright { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* 登录页外壳（LoginCard 用） */
+.app-bg {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--rt-bg);
+  color: var(--rt-tx);
+  /* 24px 是原来的 p-6，外面再叠一层安全区 */
+  padding: calc(24px + env(safe-area-inset-top, 0px))
+    calc(24px + env(safe-area-inset-right, 0px))
+    calc(24px + env(safe-area-inset-bottom, 0px))
+    calc(24px + env(safe-area-inset-left, 0px));
+}
 
 .rt-nav { display: flex; gap: 2px; }
 .rt-navbtn {
