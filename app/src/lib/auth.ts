@@ -7,7 +7,7 @@ import type { Session } from '@supabase/supabase-js'
  *
  * 流程定稿（2026-09-16）：**彻底不用魔法链接**，回归基本功 ——
  *
- *   1. 填邮箱 → 发 6 位验证码
+ *   1. 填邮箱 → 发验证码（位数由 Supabase 的「Email OTP Length」决定，别写死）
  *   2. 输了验证码 → 邮箱算验证过，拿到会话
  *   3. 立刻要求设置密码 → 设完才进应用
  *
@@ -21,6 +21,8 @@ import type { Session } from '@supabase/supabase-js'
  * - 调 signInWithOtp 时**不要传 emailRedirectTo** —— 传了 Supabase 就会
  *   发链接而不是验证码
  * - 邮件模板里必须出现 {{ .Token }}（Supabase 后台改，见 README）
+ * - **验证码位数不要写死**：后台「Email OTP Length」可配（6 / 8 / 10），
+ *   前端只做"像不像一串数字"的粗校验，真正的判定交给 Supabase
  */
 
 // ---------- 状态 ----------

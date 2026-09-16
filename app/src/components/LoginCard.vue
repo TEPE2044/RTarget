@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { friendlyError, useAuth } from '../lib/auth'
 
@@ -8,7 +8,7 @@ import { friendlyError, useAuth } from '../lib/auth'
  *
  * 两个模式：
  * - 「登录」：邮箱 + 密码，日常快速路径
- * - 「邮箱验证码」：邮箱 → 6 位验证码 → 设密码。
+ * - 「邮箱验证码」：邮箱 → 邮件里的那串数字 → 设密码。
  *   注册、补密码、忘记密码三件事都走它（验证完一律重设密码）。
  *
  * 没有魔法链接 —— 验证码不需要点链接，任何端、任何邮件 App 都能用。
@@ -58,7 +58,29 @@ const pwdLeft = ref(PWD_WINDOW)
 let pwdTimer: ReturnType<typeof setInterval> | null = null
 
 const shownError = computed(() => error.value || authError.value)
-const codeOk = computed(() => /^\d{6}$/.test(token.value.trim()))
+/**
+ * 验证码位数**不能写死**。
+ *
+ * Supabase 的 `auth.email.otp_length` 是可配的（范围 6~10），而且
+ * **新版项目默认给 8 位**，不是 6 位 —— 我们自己的项目就是 8 位。
+ * 写死 `/^\d{6}$/` 的后果是：所有真实用户都登不进去，而且
+ * 因为是在客户端就被拦下，服务端日志里什么都看不到（这坑不少人踩过）。
+ *
+ * 所以只做"像不像一串数字"的粗校验，真正的判定交给 Supabase 的 verifyOtp。
+ */
+const CODE_MAX = 10
+const tokenDigits = computed(() => token.value.replace(/\D/g, ''))
+const codeOk = computed(() => /^\d{6,10}$/.test(tokenDigits.value))
+
+/**
+ * 用户几乎不会手敲验证码，而是从邮件里**复制粘贴** ——
+ * 常带尾随换行、空格，甚至被折行插进来的横线。
+ * 所以输入直接只留数字，免得因为一个空格白跑一次请求。
+ */
+watch(token, (v) => {
+  const clean = v.replace(/\D/g, '').slice(0, CODE_MAX)
+  if (clean !== v) token.value = clean
+})
 const canSubmitPwd = computed(() => pwd1.value.length >= 6 && pwd1.value === pwd2.value)
 const pwdLeftText = computed(() => {
   const m = Math.floor(pwdLeft.value / 60)
@@ -156,12 +178,12 @@ async function doSendCode() {
 
 async function doVerify() {
   error.value = ''
-  if (!codeOk.value) return (error.value = '验证码是 6 位数字')
+  if (!codeOk.value) return (error.value = '把邮件里那串数字填进来')
   if (props.devPreview) { step.value = 'password'; startPwdWindow(); return }
 
   busy.value = true
   try {
-    await verifyCode(email.value, token.value)
+    await verifyCode(email.value, tokenDigits.value)
     // 只有真的验证通过才推进 —— 见上面那段注释，这里不能省
     step.value = 'password'
     startPwdWindow()
@@ -221,7 +243,7 @@ async function doLogin() {
     <div class="rt-login-box">
       <div class="rt-login-brand">
         <div class="rt-login-logo">RTarget</div>
-        <div class="rt-meta">懒人自驱动 · 奖罚迭代</div>
+        <div class="rt-meta mt-2">懒人自驱动 · 奖罚迭代</div>
       </div>
 
       <div class="rt-card" style="padding: 16px">
@@ -237,7 +259,7 @@ async function doLogin() {
             
           </button>
         </div>
-
+  
         <!-- ============ 登录：邮箱 + 密码 ============ -->
         <a-form v-if="mode === 'login'" layout="vertical" @submit.prevent="doLogin">
           <a-form-item label="邮箱">
@@ -272,14 +294,14 @@ async function doLogin() {
           </p> -->
         </a-form>
 
-        <!-- ============ 验证码 第 2 步：输 6 位码 ============ -->
+        <!-- ============ 验证码 第 2 步：输邮件里那串数字 ============ -->
         <a-form v-else-if="step === 'verify'" layout="vertical" @submit.prevent="doVerify">
           <p class="rt-meta" style="margin: 0 0 12px">
             验证码已发到 <span style="color: var(--rt-tx)">{{ email }}</span>
           </p>
-          <a-form-item label="6 位验证码">
-            <a-input v-model:value="token" class="rt-code" size="large" :maxlength="6"
-              inputmode="numeric" placeholder="000000" @pressEnter="doVerify" />
+          <a-form-item label="验证码">
+            <a-input v-model:value="token" class="rt-code" size="large" :maxlength="CODE_MAX"
+              inputmode="numeric" @pressEnter="doVerify" />
           </a-form-item>
           <button type="button" class="rbtn-primary rbtn-lg" style="width: 100%"
             :disabled="busy || !codeOk" @click="doVerify()">
@@ -337,11 +359,12 @@ async function doLogin() {
 .rt-login-brand { text-align: center; margin-bottom: 20px; }
 .rt-login-logo { font-size: 24px; font-weight: 500; letter-spacing: 0.02em; }
 
-/* 验证码：等宽、居中、拉开字距，一眼能数清几位 */
+/* 验证码：居中、拉开字距，一眼能数清几位。
+   字距留得克制一点 —— 位数是可配的（最多 10 位），别撑出输入框 */
 .rt-code :deep(input) {
   text-align: center;
-  letter-spacing: 8px;
-  font-size: 20px;
+  letter-spacing: 4px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
 
