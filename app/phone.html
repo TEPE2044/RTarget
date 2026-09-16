@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>RTarget 手机预览</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #e8e8ea; }
+    body { display: flex; justify-content: center; }
+    iframe { height: 100%; border: 0; background: #fff; }
+  </style>
+</head>
+<body>
+  <!--
+    dev-only：把 preview.html 放进一个固定宽度的 iframe 里，
+    这样视口宽度就是真机宽度（fixed 定位的底栏也跟着收进框内）。
+    无头 Chrome 的窗口最小宽度是 500px，直接设 --window-size=390 只会裁掉右边。
+    用法：http://localhost:5174/phone.html?tab=0&theme=light&w=390
+  -->
+  <iframe id="frame"></iframe>
+  <script>
+    const q = new URLSearchParams(location.search)
+    const frame = document.getElementById('frame')
+    frame.style.width = (q.get('w') || 390) + 'px'
+    frame.src = '/preview.html?' + q.toString()
+  </script>
+</body>
+</html>

@@ -165,17 +165,17 @@ async function onConcede(n: GameNode, tip: string) {
   <div class="rt-cards">
     <article v-for="g in shown" :key="g.a.id" class="rt-card rt-cardwrap">
       <div class="rt-rail" :class="railCls(g)"></div>
-      <div class="rt-node-body" style="padding: 16px 18px">
+      <div class="rt-node-body rt-pad">
 
-        <!-- ============ 惩罚复合体：独立卡片，左右各一组按钮 ============ -->
+        <!-- ============ 惩罚复合体：独立卡片，上下各一组按钮 ============ -->
         <template v-if="inCompound(g.a, g.c) && g.c">
           <header class="rt-cmp-head">
             <span class="rt-t14s" style="color: var(--rt-amber)">惩罚复合体</span>
-            <span class="rt-meta rt-hide-sm" style="color: var(--rt-amber)">
-              原目标未完成，扣分已生效 —— 两边都做完，扣的分全部返还
-            </span>
             <span class="rt-meta rt-push" style="color: var(--rt-amber); white-space: nowrap">
               C 死线 {{ dueText(g.c.due_at) }} · {{ leftText(g.c.due_at) }}
+            </span>
+            <span class="rt-meta rt-cmp-note" style="color: var(--rt-amber)">
+              原目标未完成，扣分已生效 —— 两边都做完，扣的分全部返还
             </span>
           </header>
 
@@ -189,7 +189,7 @@ async function onConcede(n: GameNode, tip: string) {
               <p class="rt-meta" style="margin: 4px 0 0" :style="g.a.completed_at ? 'color: var(--rt-green)' : ''">
                 {{ g.a.completed_at ? '已申报完成，等另一边一起结算' : '还没补做' }}
               </p>
-              <div style="display: flex; gap: 8px; margin-top: 12px">
+              <div class="rt-actrow">
                 <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy"
                   @click="onComplete(g.a, '已补做原目标 —— 两边都完成就全部返还')">补做完成</button>
                 <button v-else class="rbtn" disabled>已补做</button>
@@ -209,7 +209,7 @@ async function onConcede(n: GameNode, tip: string) {
               <p class="rt-meta" style="margin: 4px 0 0" :style="g.c.completed_at ? 'color: var(--rt-green)' : ''">
                 {{ g.c.completed_at ? '已申报完成，等另一边一起结算' : '还没做' }}
               </p>
-              <div style="display: flex; gap: 8px; margin-top: 12px">
+              <div class="rt-actrow">
                 <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy"
                   @click="onComplete(g.c, '已把拖延的事做完 —— 两边都完成就全部返还')">完成</button>
                 <button v-else class="rbtn" disabled>已完成</button>
@@ -228,22 +228,22 @@ async function onConcede(n: GameNode, tip: string) {
           </footer>
         </template>
 
-        <!-- ============ 一般卡片：进行中 / 已了结 ============ -->
+        <!-- ============ 一般卡片：进行中 / 已完成 ============ -->
         <template v-else>
           <div class="rt-node">
             <span class="rt-node-lbl">目标</span>
             <div class="rt-node-body">
               <div class="rt-line1">
-                <span :class="variant === 'open' ? 'rt-t14s' : 'rt-t14'">{{ g.a.content }}</span>
+                <span class="rt-flex1" :class="variant === 'open' ? 'rt-t14s' : 'rt-t14'">{{ g.a.content }}</span>
                 <span class="pill" :class="pillOf(g.a).cls">{{ pillOf(g.a).text }}</span>
-                <span class="rt-meta rt-push">{{ tierName[g.a.tier] }} · {{ g.a.stake }} 分</span>
               </div>
               <div v-if="g.a.compound_a_done !== null" class="rt-line2">
                 <span class="rt-meta" style="color: var(--rt-amber)">复合体结算：{{ compoundVerdict(g.a) }}</span>
               </div>
               <div class="rt-line2">
+                <span class="rt-meta">{{ tierName[g.a.tier] }} · {{ g.a.stake }} 分</span>
                 <span class="rt-meta">死线 {{ dueText(g.a.due_at) }}</span>
-                <span class="rt-push" style="display: flex; gap: 8px">
+                <span v-if="canComplete(g.a) || canConcede(g.a)" class="rt-btns">
                   <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy"
                     @click="onComplete(g.a, '目标达成，奖励 B 已到账')">完成</button>
                   <a-popconfirm v-if="canConcede(g.a)" title="放弃目标？立刻判负并进入惩罚复合体。"
@@ -261,15 +261,14 @@ async function onConcede(n: GameNode, tip: string) {
             <span class="rt-node-lbl">奖励</span>
             <div class="rt-node-body">
               <div class="rt-line1">
-                <span class="rt-t14" :style="g.b.status === 'bound' ? 'color: var(--rt-tx2)' : ''">{{ g.b.content }}</span>
+                <span class="rt-flex1 rt-t14" :style="g.b.status === 'bound' ? 'color: var(--rt-tx2)' : ''">{{ g.b.content }}</span>
                 <span class="pill" :class="pillOf(g.b).cls">{{ pillOf(g.b).text }}</span>
-                <span class="rt-meta rt-push">{{ tierName[g.b.tier] }} · +{{ g.b.stake }} 分</span>
               </div>
               <div class="rt-line2">
                 <span v-if="g.b.status === 'bound'" class="rt-meta">{{ bHint(g) }}</span>
                 <template v-else-if="!g.b.completed_at">
                   <span class="rt-meta" style="color: var(--rt-green)">+{{ g.b.stake }} 分已到账，享受完点确认</span>
-                  <span class="rt-push">
+                  <span class="rt-btns">
                     <button class="rbtn-primary" :disabled="busy" @click="onComplete(g.b, '奖励已确认')">确认</button>
                   </span>
                 </template>
@@ -284,15 +283,15 @@ async function onConcede(n: GameNode, tip: string) {
               <span class="rt-node-lbl">惩罚</span>
               <div class="rt-node-body">
                 <div class="rt-line1">
-                  <span class="rt-t14" :style="g.c.status === 'bound' ? 'color: var(--rt-tx2)' : ''">{{ g.c.content }}</span>
+                  <span class="rt-flex1 rt-t14" :style="g.c.status === 'bound' ? 'color: var(--rt-tx2)' : ''">{{ g.c.content }}</span>
                   <span class="pill" :class="pillOf(g.c).cls">{{ pillOf(g.c).text }}</span>
-                  <span class="rt-meta rt-push">{{ tierName[g.c.tier] }} · {{ g.c.stake }} 分</span>
                 </div>
                 <div class="rt-line2">
                   <span v-if="g.c.status === 'bound'" class="rt-meta">{{ boundHint(g) }}</span>
                   <template v-else-if="g.c.status === 'active' && !g.c.completed_at">
+                    <span class="rt-meta">{{ tierName[g.c.tier] }} · {{ g.c.stake }} 分</span>
                     <span class="rt-meta">死线 {{ dueText(g.c.due_at) }} · {{ leftText(g.c.due_at) }}</span>
-                    <span class="rt-push" style="display: flex; gap: 8px">
+                    <span class="rt-btns">
                       <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy"
                         @click="onComplete(g.c, '已把拖延的事做完')">完成</button>
                       <a-popconfirm v-if="canConcede(g.c)" title="放弃惩罚？复合体会按最终结果结算。"
@@ -311,7 +310,7 @@ async function onConcede(n: GameNode, tip: string) {
       </div>
     </article>
 
-    <div v-if="shown.length === 0" class="rt-card" style="padding: 28px; text-align: center">
+    <div v-if="shown.length === 0" class="rt-card rt-center-tx" style="padding: 28px">
       <span class="rt-meta">
         {{ variant === 'open' ? '没有未完成的事。' : '这个档还没有已完成的目标。' }}
       </span>
@@ -322,38 +321,36 @@ async function onConcede(n: GameNode, tip: string) {
 <style scoped>
 .rt-cards { display: flex; flex-direction: column; gap: 12px; }
 
+/* ---------- 复合体 ---------- */
+
 .rt-cmp-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin: -16px -18px 16px;
-  padding: 12px 18px;
+  gap: 2px 8px;
+  margin: -14px -16px 14px;
+  padding: 11px 16px;
   background: var(--rt-amber-bg);
 }
+.rt-cmp-note { flex-basis: 100%; }
 
-.rt-cmp-cols { display: flex; gap: 14px; }
-@media (max-width: 720px) {
-  .rt-cmp-cols { flex-direction: column; }
-  .rt-hide-sm { display: none; }
-}
+/* 手机竖屏两栏太窄，改成上下堆叠 */
+.rt-cmp-cols { display: flex; flex-direction: column; gap: 10px; }
 
 .rt-cmp-col {
-  flex: 1;
-  min-width: 0;
   padding: 12px 14px;
   border: 0.5px solid var(--rt-line);
-  border-radius: 8px;
+  border-radius: 10px;
 }
-
 .rt-cmp-col.is-done { background: var(--rt-sub); }
 
 .rt-cmp-foot {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin: 16px -18px -16px;
-  padding: 10px 18px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 14px -16px -14px;
+  padding: 10px 16px;
   border-top: 0.5px solid var(--rt-line);
 }
 </style>

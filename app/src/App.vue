@@ -50,7 +50,7 @@ const activeArchive = computed(
 const nodes = computed(() => allNodes.value.filter((n) => n.archive_id === activeArchiveId.value))
 const clock = computed(() => now.value.toLocaleString('zh-CN'))
 
-/** 有未了结节点的存档 id —— 存档页签红点 */
+/** 有未完成事情的存档 id —— 存档页签红点 */
 const pendingArchiveIds = computed(() => {
   const s = new Set<string>()
   for (const a of openArchives.value) if (hasPending(allNodes.value, a.id)) s.add(a.id)
@@ -81,10 +81,11 @@ const stats = computed(() => ({
   lost: ledger.value.filter((l) => l.amount < 0).reduce((s, l) => s + Number(l.amount), 0),
 }))
 
+/** 底部导航：手机上要短，长词放不下 */
 const pages = computed(() => [
   { key: 'home' as PageKey, label: '首页', badge: 0 },
-  { key: 'running' as PageKey, label: '正在执行', badge: pendingGroups.value.length },
-  { key: 'history' as PageKey, label: '历史记录', badge: 0 },
+  { key: 'running' as PageKey, label: '执行', badge: pendingGroups.value.length },
+  { key: 'history' as PageKey, label: '历史', badge: 0 },
 ])
 
 const vitalityColor = computed(() =>
@@ -150,10 +151,11 @@ onMounted(() => {
 
   // 只有装进壳里才生效，浏览器上是空操作
   registerBackButton({
-    hasModalOpen: () => showNewArchive.value || showGoalForm.value,
+    hasModalOpen: () => showNewArchive.value || showGoalForm.value || showMore.value,
     closeModal: () => {
       showNewArchive.value = false
       showGoalForm.value = false
+      showMore.value = false
     },
     currentPage: () => page.value,
     goHome: () => { page.value = 'home' },
@@ -182,6 +184,8 @@ watch(session, (s) => {
 
 const showNewArchive = ref(false)
 const newArchiveName = ref('')
+/** 顶栏「更多」：手机上用底部抽屉，比下拉菜单好点 */
+const showMore = ref(false)
 
 async function addArchive() {
   const name = newArchiveName.value.trim()
@@ -364,27 +368,48 @@ function archiveGoalCount(id: string): number {
 <template>
   <a-config-provider :theme="antdThemeConfig">
     <!-- 会话恢复中：先别闪一下登录页 -->
-    <div v-if="loading" class="rt" style="display: flex; align-items: center; justify-content: center">
+    <div v-if="loading" class="rt rt-center">
       <span class="rt-meta">载入中…</span>
     </div>
 
     <LoginCard v-else-if="!session" />
 
     <div v-else class="rt">
-      <header class="rt-top">
-        <span class="rt-brand">RTarget</span>
-        <span class="rt-meta rt-num">{{ clock }}</span>
-        <nav class="rt-nav">
-          <button v-for="p in pages" :key="p.key" class="rt-navbtn"
-            :class="{ active: page === p.key }" @click="page = p.key">
-            {{ p.label }}<span v-if="p.badge > 0" class="rt-navnum">{{ p.badge }}</span>
+      <!-- ---------- 顶部窄栏 ---------- -->
+      <header class="rt-appbar">
+        <div class="rt-appbar-inner">
+          <span class="rt-brand">RTarget</span>
+          <span class="rt-meta rt-num">{{ clock }}</span>
+          <span class="rt-push"></span>
+
+          <button class="rt-iconbtn" :disabled="busy" aria-label="刷新"
+            @click="refresh()">
+            <svg class="rt-ico" width="19" height="19" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 11.5a8 8 0 1 0-2.4 5.7" />
+              <path d="M20 5.5v6h-6" />
+            </svg>
           </button>
-        </nav>
-        <div class="rt-topright">
-          <span class="rt-meta">{{ userEmail }}</span>
-          <button class="rbtn" @click="toggleTheme()">{{ theme === 'dark' ? '浅色' : '深色' }}</button>
-          <button class="rbtn" :disabled="busy" @click="refresh()">刷新</button>
-          <button class="rbtn" @click="signOut()">退出</button>
+
+          <button class="rt-iconbtn" aria-label="切换深浅色" @click="toggleTheme()">
+            <svg v-if="theme === 'dark'" class="rt-ico" width="19" height="19" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5" />
+            </svg>
+            <svg v-else class="rt-ico" width="19" height="19" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z" />
+            </svg>
+          </button>
+
+          <button class="rt-iconbtn" aria-label="更多" @click="showMore = true">
+            <svg class="rt-ico" width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5.2" r="1.6" />
+              <circle cx="12" cy="12" r="1.6" />
+              <circle cx="12" cy="18.8" r="1.6" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -392,22 +417,21 @@ function archiveGoalCount(id: string): number {
 
         <!-- ==================== 首页 ==================== -->
         <section v-if="page === 'home'">
-          <div class="rt-card" style="padding: 20px 22px; display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+          <div class="rt-card rt-vital">
             <div>
-              <p class="rt-meta" style="margin: 0">活力值（全局血池）</p>
-              <p class="rt-num" style="margin: 4px 0 0; font-size: 40px; font-weight: 500; line-height: 1.1"
-                :style="{ color: vitalityColor }">{{ vitality }}</p>
+              <p class="rt-meta" style="margin: 0">活力值</p>
+              <p class="rt-vital-num rt-num" :style="{ color: vitalityColor }">{{ vitality }}</p>
             </div>
-            <div style="display: flex; gap: 20px; margin-bottom: 4px">
+            <div class="rt-vital-side">
               <span class="rt-meta">累计奖励
-                <span class="rt-num" style="font-size: 13px; color: var(--rt-green)">+{{ stats.gained }}</span>
+                <span class="rt-num" style="color: var(--rt-green)">+{{ stats.gained }}</span>
               </span>
               <span class="rt-meta">累计扣除
-                <span class="rt-num" style="font-size: 13px; color: var(--rt-red)">{{ stats.lost }}</span>
+                <span class="rt-num" style="color: var(--rt-red)">{{ stats.lost }}</span>
               </span>
             </div>
-            <span class="rt-meta rt-push" style="margin-bottom: 4px">取整不留小数 · 活力值为负时禁押高档与 ALL IN</span>
           </div>
+          <p class="rt-meta rt-note">不留小数 · 活力值为负时禁押高档与 ALL IN</p>
 
           <div class="rt-card rt-strip rt-gap12">
             <div>
@@ -428,105 +452,115 @@ function archiveGoalCount(id: string): number {
             </div>
           </div>
 
-          <div class="rt-cols rt-gap12">
-            <div class="rt-card rt-col rt-pad">
-              <div class="rt-line1">
-                <span class="rt-sec">未完成的事</span>
-                <span class="rt-meta rt-push">跨全部未封档存档</span>
-              </div>
-              <div style="margin-top: 6px">
-                <div v-for="g in pendingGroups" :key="g.a.id" class="rt-li">
-                  <span class="pill" :class="inCompound(g.a, g.c) ? 'p-amber' : 'p-blue'">
-                    {{ inCompound(g.a, g.c) ? '复合体' : '进行中' }}
-                  </span>
-                  <span class="rt-li-main">{{ g.a.content }}</span>
-                  <span class="rt-meta">{{ archiveName(g.a.archive_id) }}</span>
-                </div>
-                <p v-if="pendingGroups.length === 0" class="rt-meta" style="margin: 8px 0 0">暂时没有未完成的事。</p>
-              </div>
+          <div class="rt-card rt-pad rt-gap12">
+            <div class="rt-line1">
+              <span class="rt-sec">未完成的事</span>
+              <span class="rt-meta rt-push">{{ pendingGroups.length }} 件</span>
             </div>
-
-            <div class="rt-card rt-col rt-pad">
-              <div class="rt-line1">
-                <span class="rt-sec">流水账</span>
-                <span class="rt-meta rt-push">最近 100 笔</span>
-              </div>
-              <div style="margin-top: 6px">
-                <div v-for="l in ledger" :key="l.id" class="rt-li">
-                  <span class="rt-num" style="flex: 0 0 34px; text-align: right; font-size: 13px"
-                    :style="{ color: l.amount > 0 ? 'var(--rt-green)' : l.amount < 0 ? 'var(--rt-red)' : 'var(--rt-tx2)' }">
-                    {{ l.amount > 0 ? '+' : '' }}{{ l.amount }}
-                  </span>
-                  <span class="rt-li-main">{{ reasonText[l.reason ?? ''] ?? l.note ?? '初始活力值' }}</span>
-                  <span class="rt-meta">{{ new Date(l.created_at).toLocaleDateString('zh-CN') }}</span>
+            <div style="margin-top: 4px">
+              <div v-for="g in pendingGroups" :key="g.a.id" class="rt-li">
+                <span class="pill" :class="inCompound(g.a, g.c) ? 'p-amber' : 'p-blue'">
+                  {{ inCompound(g.a, g.c) ? '复合体' : '进行中' }}
+                </span>
+                <div class="rt-li-2">
+                  <div class="rt-li-2-t">{{ g.a.content }}</div>
+                  <div class="rt-meta">{{ archiveName(g.a.archive_id) }}</div>
                 </div>
-                <p v-if="ledger.length === 0" class="rt-meta" style="margin: 8px 0 0">暂无流水。</p>
               </div>
+              <p v-if="pendingGroups.length === 0" class="rt-meta rt-hint">暂时没有未完成的事。</p>
+            </div>
+          </div>
+
+          <div class="rt-card rt-pad rt-gap12">
+            <div class="rt-line1">
+              <span class="rt-sec">流水账</span>
+              <span class="rt-meta rt-push">最近 100 笔</span>
+            </div>
+            <div style="margin-top: 4px">
+              <div v-for="l in ledger" :key="l.id" class="rt-li">
+                <span class="rt-num" style="flex: 0 0 36px; text-align: right"
+                  :style="{ color: l.amount > 0 ? 'var(--rt-green)' : l.amount < 0 ? 'var(--rt-red)' : 'var(--rt-tx2)' }">
+                  {{ l.amount > 0 ? '+' : '' }}{{ l.amount }}
+                </span>
+                <div class="rt-li-2">
+                  <div class="rt-li-2-t">{{ reasonText[l.reason ?? ''] ?? l.note ?? '初始活力值' }}</div>
+                  <div class="rt-meta">{{ new Date(l.created_at).toLocaleDateString('zh-CN') }}</div>
+                </div>
+              </div>
+              <p v-if="ledger.length === 0" class="rt-meta rt-hint">暂无流水。</p>
             </div>
           </div>
         </section>
 
         <!-- ==================== 正在执行 ==================== -->
         <section v-else-if="page === 'running'">
-          <div class="rt-bar">
-            <div class="rt-chips">
-              <button v-for="a in openArchives" :key="a.id" class="rt-chip"
-                :class="{ active: a.id === activeArchiveId }" @click="activeArchiveId = a.id">
-                <span v-if="pendingArchiveIds.has(a.id)" class="rt-dot"></span>{{ a.name }}
-              </button>
-              <span v-if="openArchives.length === 0" class="rt-meta">还没有存档</span>
-            </div>
-            <button class="rbtn" @click="showNewArchive = true">+ 新档</button>
-            <div class="rt-push" style="display: flex; gap: 8px">
-              <a-popconfirm v-if="activeArchive" title="封档？这个存档里还有事没做完，将扣当前活力值 10%"
-                ok-text="封档" cancel-text="取消" @confirm="onSeal()">
-                <button class="rbtn rbtn-danger" :disabled="busy">封档</button>
-              </a-popconfirm>
-              <button v-if="activeArchive" class="rbtn-primary rbtn-lg" :disabled="busy"
-                @click="showGoalForm = true">+ 设一个新目标</button>
-            </div>
+          <div class="rt-chips">
+            <button v-for="a in openArchives" :key="a.id" class="rt-chip"
+              :class="{ active: a.id === activeArchiveId }" @click="activeArchiveId = a.id">
+              <span v-if="pendingArchiveIds.has(a.id)" class="rt-dot"></span>{{ a.name }}
+            </button>
+            <button class="rt-chip rt-chip-add" @click="showNewArchive = true">+ 新档</button>
           </div>
-          <p class="rt-meta" style="margin: 8px 0 14px">红点表示这个存档里还有事没做完</p>
 
-          <NodeList :nodes="nodes" :busy="busy" variant="open" @refresh="refresh" />
+          <div class="rt-line1 rt-gap8">
+            <span v-if="pendingArchiveIds.size > 0" class="rt-meta">红点表示这个存档里还有事没做完</span>
+            <a-popconfirm v-if="activeArchive"
+              title="封档？这个存档里还有事没做完，将扣当前活力值 10%"
+              ok-text="封档" cancel-text="取消" @confirm="onSeal()">
+              <button class="rbtn rbtn-danger rt-push" :disabled="busy">封档</button>
+            </a-popconfirm>
+          </div>
+
+          <p v-if="openArchives.length === 0" class="rt-meta rt-hint">
+            还没有正在执行的存档 —— 点上面「+ 新档」开一个。
+          </p>
+
+          <NodeList v-else class="rt-gap12" :nodes="nodes" :busy="busy" variant="open" @refresh="refresh" />
         </section>
 
         <!-- ==================== 历史记录 ==================== -->
         <section v-else>
-          <div class="rt-line1" style="margin-bottom: 12px">
+          <div class="rt-line1">
             <span class="rt-sec">封档记录</span>
-            <span class="rt-meta">{{ sealedArchives.length }} 个存档</span>
+            <span class="rt-meta rt-push">{{ sealedArchives.length }} 个存档</span>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px">
             <div v-for="a in sealedArchives" :key="a.id" class="rt-card rt-cardwrap"
               style="cursor: pointer" @click="historyArchiveId = a.id">
               <div class="rt-rail rt-rail-gray"></div>
               <div class="rt-node-body rt-pad">
                 <div class="rt-line1">
                   <span class="pill p-gray">已封档</span>
-                  <span class="rt-t14s">{{ a.name }}</span>
-                  <span class="rt-meta rt-push">
-                    {{ a.sealed_at ? new Date(a.sealed_at).toLocaleString('zh-CN') : '' }}
-                  </span>
+                  <span class="rt-t14s rt-flex1">{{ a.name }}</span>
                   <a-popconfirm
                     title="删除这个存档？存档和它的目标都会被删掉。活力值流水会保留，所以分数不变。"
                     ok-text="删除" cancel-text="取消" @confirm="onDeleteArchive(a)">
-                    <button class="rbtn rbtn-danger" :disabled="busy" @click.stop>删除</button>
+                    <button class="rt-iconbtn rt-iconbtn-sm rt-iconbtn-danger" :disabled="busy"
+                      aria-label="删除存档" @click.stop>
+                      <svg class="rt-ico" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 7h16M9.5 7V4.8h5V7M6.6 7l1 12.2h8.8L17.4 7" />
+                        <path d="M10.4 10.6v5.6M13.6 10.6v5.6" />
+                      </svg>
+                    </button>
                   </a-popconfirm>
                 </div>
-                <div class="rt-line1" style="margin-top: 10px; gap: 22px">
+                <p class="rt-meta" style="margin: 3px 0 0">
+                  {{ a.sealed_at ? new Date(a.sealed_at).toLocaleString('zh-CN') : '' }}
+                </p>
+                <div class="rt-line2" style="gap: 8px 18px">
                   <span class="rt-meta">目标
-                    <span class="rt-num" style="font-size: 13px; color: var(--rt-tx)">{{ archiveGoalCount(a.id) }}</span> 个
+                    <span class="rt-num" style="color: var(--rt-tx)">{{ archiveGoalCount(a.id) }}</span> 个
                   </span>
                   <span class="rt-meta">封档
-                    <span v-if="a.sealed_free" class="rt-num" style="font-size: 13px; color: var(--rt-green)">免费（全部完成）</span>
-                    <span v-else class="rt-num" style="font-size: 13px; color: var(--rt-red)">
+                    <span v-if="a.sealed_free" class="rt-num" style="color: var(--rt-green)">免费（全部完成）</span>
+                    <span v-else class="rt-num" style="color: var(--rt-red)">
                       扣 {{ Math.abs(findSealPenalty(ledger, a.id) ?? 0) }} 分
                     </span>
                   </span>
-                  <span class="rt-meta">本档净收支
-                    <span class="rt-num" style="font-size: 13px"
+                  <span class="rt-meta">净收支
+                    <span class="rt-num"
                       :style="{ color: (sealSums[a.id] ?? 0) >= 0 ? 'var(--rt-green)' : 'var(--rt-red)' }">
                       {{ (sealSums[a.id] ?? 0) >= 0 ? '+' : '' }}{{ sealSums[a.id] ?? 0 }}
                     </span>
@@ -535,45 +569,100 @@ function archiveGoalCount(id: string): number {
               </div>
             </div>
           </div>
-          <div v-if="sealedArchives.length === 0" class="rt-card" style="padding: 28px; text-align: center">
+          <div v-if="sealedArchives.length === 0" class="rt-card rt-center-tx rt-gap12" style="padding: 28px">
             <span class="rt-meta">还没有封过档。</span>
           </div>
 
-          <div class="rt-line1"
-            style="margin: 24px 0 12px; padding-top: 18px; border-top: 0.5px solid var(--rt-line)">
-            <span class="rt-sec">已完成的目标</span>
+          <div class="rt-gap20" style="padding-top: 16px; border-top: 0.5px solid var(--rt-line)">
+            <div class="rt-line1">
+              <span class="rt-sec">已完成的目标</span>
+            </div>
             <a-select v-model:value="historyArchiveId" :options="archiveOptions"
-              placeholder="选择存档" size="small" style="min-width: 200px; margin-left: 10px" />
+              placeholder="选择存档" style="width: 100%; margin-top: 10px" />
           </div>
 
-          <div v-if="!historyArchiveId" class="rt-card" style="padding: 28px; text-align: center">
+          <div v-if="!historyArchiveId" class="rt-card rt-center-tx rt-gap12" style="padding: 28px">
             <span class="rt-meta">选一个存档看历史。</span>
           </div>
-          <NodeList v-else :nodes="historyNodes" :busy="busy" variant="closed" @refresh="refresh" />
+          <NodeList v-else class="rt-gap12" :nodes="historyNodes" :busy="busy" variant="closed" @refresh="refresh" />
         </section>
 
       </main>
 
-      <!-- ---------- 开新存档 ---------- -->
-      <a-modal v-model:open="showNewArchive" title="开新存档" :footer="null" :width="380">
-        <a-input v-model:value="newArchiveName" placeholder="存档名，比如 2026 秋招冲刺"
-          @keyup.enter="addArchive()" />
-        <p class="rt-meta" style="margin: 8px 0 0">开新档不是重来 —— 活力值全局公用，之前扣掉的分不会回来。</p>
-        <div style="display: flex; gap: 8px; margin-top: 16px">
-          <button class="rbtn-primary rbtn-lg" :disabled="busy || !newArchiveName.trim()"
-            @click="addArchive()">创建</button>
-          <button class="rbtn rbtn-lg" @click="showNewArchive = false">取消</button>
+      <!-- ---------- 底部导航 ---------- -->
+      <nav class="rt-tabbar">
+        <div class="rt-tabbar-inner">
+          <button v-for="p in pages" :key="p.key" class="rt-tab"
+            :class="{ active: page === p.key }" @click="page = p.key">
+            <span class="rt-tab-ico">
+              <svg v-if="p.key === 'home'" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3.6 10.4 12 3.8l8.4 6.6" />
+                <path d="M5.8 9.3V20h12.4V9.3" />
+              </svg>
+              <svg v-else-if="p.key === 'running'" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <circle cx="12" cy="12" r="8.3" />
+                <circle cx="12" cy="12" r="3.4" />
+              </svg>
+              <svg v-else class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="8.3" />
+                <path d="M12 7.4V12l3.2 1.9" />
+              </svg>
+              <span v-if="p.badge > 0" class="rt-tab-badge">{{ p.badge > 99 ? '99+' : p.badge }}</span>
+            </span>
+            <span>{{ p.label }}</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- ---------- 主行动按钮（只在执行页出现） ---------- -->
+      <div v-if="page === 'running' && activeArchive" class="rt-fabwrap">
+        <div class="rt-fabwrap-inner">
+          <button class="rt-fab" :disabled="busy" aria-label="设一个新目标" @click="showGoalForm = true">
+            <svg class="rt-ico" width="26" height="26" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 5.5v13M5.5 12h13" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ---------- 更多（底部抽屉） ---------- -->
+      <a-modal v-model:open="showMore" title="账号" :footer="null" :width="580"
+        wrap-class-name="rt-sheet">
+        <p class="rt-meta" style="margin: 0">{{ userEmail }}</p>
+        <div class="rt-sheetlist">
+          <button class="rt-sheetitem" :disabled="busy" @click="refresh(); showMore = false">
+            刷新数据
+          </button>
+          <button class="rt-sheetitem rt-sheetitem-danger" @click="signOut()">退出登录</button>
         </div>
       </a-modal>
 
-      <!-- ---------- 设一个新目标 ---------- -->
-      <a-modal v-model:open="showGoalForm" title="设一个新目标" :footer="null" :width="580">
+      <!-- ---------- 开新存档（底部抽屉） ---------- -->
+      <a-modal v-model:open="showNewArchive" title="开新存档" :footer="null" :width="580"
+        wrap-class-name="rt-sheet">
+        <a-input v-model:value="newArchiveName" placeholder="存档名，比如 2026 秋招冲刺"
+          @keyup.enter="addArchive()" />
+        <p class="rt-meta" style="margin: 8px 0 0">开新档不是重来 —— 活力值全局公用，之前扣掉的分不会回来。</p>
+        <div class="rt-sheet-actions">
+          <button class="rbtn-primary" :disabled="busy || !newArchiveName.trim()"
+            @click="addArchive()">创建</button>
+          <button class="rbtn" @click="showNewArchive = false">取消</button>
+        </div>
+      </a-modal>
+
+      <!-- ---------- 设一个新目标（底部抽屉） ---------- -->
+      <a-modal v-model:open="showGoalForm" title="设一个新目标" :footer="null" :width="580"
+        wrap-class-name="rt-sheet">
         <a-form layout="vertical">
           <a-form-item label="目标 A（押注）· 这件事是什么">
             <a-input v-model:value="goalForm.content" placeholder="比如：做完 660 题第三章" />
           </a-form-item>
 
-          <div style="display: flex; gap: 12px">
+          <div class="rt-form-row">
             <a-form-item label="档位" style="flex: 1">
               <a-select v-model:value="goalForm.tier">
                 <a-select-option value="low">低（5 分）</a-select-option>
@@ -584,7 +673,7 @@ function archiveGoalCount(id: string): number {
                 </a-select-option>
               </a-select>
             </a-form-item>
-            <a-form-item label="A 死线（哪天做完，次日 0 点判负）" style="flex: 1">
+            <a-form-item label="A 死线（哪天做完）" style="flex: 1">
               <a-input v-model:value="goalForm.dueDate" type="date" :min="minDueDate" />
             </a-form-item>
           </div>
@@ -616,9 +705,9 @@ function archiveGoalCount(id: string): number {
             {{ shortDate(penaltyDate) }} —— 这段就是惩罚复合体的补做窗口
           </p>
 
-          <div style="display: flex; gap: 8px">
-            <button class="rbtn-primary rbtn-lg" :disabled="busy" @click="addGoal()">押注设立</button>
-            <button class="rbtn rbtn-lg" @click="showGoalForm = false">取消</button>
+          <div class="rt-sheet-actions">
+            <button class="rbtn-primary" :disabled="busy" @click="addGoal()">押注设立</button>
+            <button class="rbtn" @click="showGoalForm = false">取消</button>
           </div>
         </a-form>
       </a-modal>

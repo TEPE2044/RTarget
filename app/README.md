@@ -17,24 +17,44 @@ VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...          # 或 VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
+### 界面布局（移动优先）
+
+整个界面按手机 App 的样子来，桌面上就是居中一条 640px 的窄列：
+
+- **顶栏**（`.rt-appbar`）：品牌 + 实时时钟 + 刷新 / 深浅色 / 更多三个图标按钮，
+  吸顶、半透明磨砂
+- **底部导航**（`.rt-tabbar`）：首页 / 执行 / 历史，带图标和数量角标，fixed 贴底
+- **右下主按钮**（`.rt-fab`）：只在「执行」页出现，点开设新目标
+- **弹窗一律是底部抽屉**：`<a-modal wrap-class-name="rt-sheet">`，
+  配 `src/style.css` 里的 `.ant-modal-wrap.rt-sheet` 实现圆角、抓手、吸底按钮
+- **「更多」也是抽屉**（`.rt-sheetlist` / `.rt-sheetitem`）—— 手机上点整行比下拉菜单好按
+
+内容区最大宽度由 `--rt-maxw` 控制，底部导航/抽屉/主按钮都跟着这个宽度对齐。
+
 ### 排版自查（dev only）
 
 `preview.html` 是一个**不连库**的预览页：真实组件 + 假数据，
 用来在没登录的情况下看排版。不进构建产物（`vite build` 只打包 `index.html`）。
 
-- `http://localhost:5173/preview.html`
-- `?tab=0|1|2|3` → 正在执行 / 首页 / 历史记录 / 设目标表单
+- `http://localhost:5173/preview.html?tab=0&theme=light`
+- `?tab=0|1|2|3` → 执行 / 首页 / 历史 / 表单
 - `?theme=light|dark`
+- `?sheet=1` 打开设目标的底部抽屉，`?more=1` 打开「更多」抽屉
+- `?debug=1` 把横向溢出的元素列在页面上（查排版问题用）
 
-配无头浏览器可以直接出图（本机没装 agent-browser，用系统 Chrome 就行）：
+**手机上要看排版，用 `phone.html`**（把 preview 塞进固定宽度的 iframe）：
 
 ```bash
 "/c/Program Files/Google/Chrome/Application/chrome.exe" \
   --headless=new --disable-gpu --hide-scrollbars --no-sandbox \
-  --force-device-scale-factor=1 --window-size=1240,900 \
-  --virtual-time-budget=7000 --screenshot="out.png" \
-  "http://localhost:5174/preview.html?tab=0&theme=light"
+  --force-device-scale-factor=2 --window-size=500,860 \
+  --virtual-time-budget=8000 --screenshot="out.png" \
+  "http://localhost:5174/phone.html?tab=0&theme=light&w=390"
 ```
+
+> ⚠️ 无头 Chrome 的窗口**最小宽度是 500px**：直接 `--window-size=390` 只会把右边裁掉，
+> 布局仍按 500px 算，看起来像"内容溢出了"，其实是假象。所以要走 iframe。
+
 
 ## Capacitor 套壳（Android）
 
@@ -78,8 +98,11 @@ npx @capacitor/assets generate --android    # 分发成 148 个各密度资源
 套壳必须做，否则刘海屏上顶栏会被状态栏压住：
 
 - `index.html` 的 viewport 带 `viewport-fit=cover` —— **没有它 `env(safe-area-inset-*)` 全是 0**
-- `src/style.css` 里 `.rt-top` 让出状态栏高度，`.rt-main` 补左右和底部，
+- `src/style.css` 里 `.rt-appbar` 让出状态栏高度，`.rt-tabbar` 让出手势条，
+  `.rt-main` 的左右和底部（底栏高度 + 手势条）也补齐，
   `.app-bg`（登录页）四边补齐
+
+改动这些类名时记得同步 `env(safe-area-inset-*)`，漏一处就会在真机上贴边。
 
 ### 壳内行为（`src/lib/native.ts`）
 
