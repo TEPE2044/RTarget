@@ -93,16 +93,45 @@ npx @capacitor/assets generate --android    # 分发成 148 个各密度资源
 `icon-background.png` / `splash.png` / `splash-dark.png`）。
 `icon.svg` 是顺手留的一份，可以在浏览器里直接看效果。
 
-### 安全区
+### 安全区（真机第一课，别再用 env()）
 
-套壳必须做，否则刘海屏上顶栏会被状态栏压住：
+**结论先说：Android 上 `env(safe-area-inset-*)` 不可靠，必须读 Capacitor 注入的
+`--safe-area-inset-*`。**
 
-- `index.html` 的 viewport 带 `viewport-fit=cover` —— **没有它 `env(safe-area-inset-*)` 全是 0**
-- `src/style.css` 里 `.rt-appbar` 让出状态栏高度，`.rt-tabbar` 让出手势条，
-  `.rt-main` 的左右和底部（底栏高度 + 手势条）也补齐，
-  `.app-bg`（登录页）四边补齐
+为什么：`targetSdkVersion` 是 36，Android 15+ 对这类应用**强制 edge-to-edge** ——
+页面必然铺到状态栏和导航栏底下（这时 opt-out 的 `windowOptOutEdgeToEdgeEnforcement`
+也被忽略了）。而 Android WebView 对 `env()` 的支持看版本，实测返回空值，
+于是顶部压进通知栏、底部被三个虚拟按键盖住，且**两边的按钮都点不到**。
 
-改动这些类名时记得同步 `env(safe-area-inset-*)`，漏一处就会在真机上贴边。
+Capacitor 8.3.2+ 的内核带 `SystemBars`（`insetsHandling` 默认 `css`），会读真实
+`WindowInsets`（含挖孔、IME）并按 dp 注入：
+
+```js
+document.documentElement.style.setProperty('--safe-area-inset-top', '24px')  // 等等
+```
+
+所以 `src/style.css` 里只定义一次、其余地方都用它：
+
+```css
+:root {
+  --rt-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  /* right / bottom / left 同理 */
+}
+```
+
+顺序不能反：**先读注入变量 → 退回 `env()`（iOS / 新 WebView）→ 最后 0（桌面）**。
+
+用到安全区的四类元素（改类名时一起改）：
+
+| 元素 | 让出哪边 |
+|---|---|
+| `.rt-appbar` | 顶部状态栏（往下推，但背景仍铺到状态栏底下，保住磨砂观感） |
+| `.rt-tabbar` | 底部导航栏 / 手势条 |
+| `.rt-main` | 左右 + 底部（等于底栏高度 + 导航栏，否则最后一张卡片会被盖住） |
+| `.rt-fab` / `.ant-modal-wrap.rt-sheet` | 底部导航栏 |
+
+另外 `capacitor.config.ts` 里把 `SystemBars.insetsHandling` 显式写成 `'css'` ——
+默认值就是它，写出来是防止以后被误改成 `'disable'`（一关，上下立刻被压住）。
 
 ### 壳内行为（`src/lib/native.ts`）
 
@@ -111,8 +140,11 @@ npx @capacitor/assets generate --android    # 分发成 148 个各密度资源
 - **返回键**：关弹窗 → 回首页 → 退到后台（用 `minimizeApp` 而不是 `exitApp`，
   退后台比直接退出更符合直觉）。不接管的话，因为这是没有路由的 SPA、
   WebView 里没有可回退的历史，按返回会直接退出应用。
-- **状态栏**：图标明暗跟着深浅主题走。只设图标风格不设背景色 ——
-  Android 15+ 强制全面屏，`setBackgroundColor` 已失效，背景实际由页面透上去。
+- **系统栏**：图标明暗跟着深浅主题走，**状态栏和导航栏一起设**。
+  用的是 `@capacitor/core` 自带的 `SystemBars`，不是 `@capacitor/status-bar` ——
+  后者只管道状态栏，导航栏的三按键图标在浅色主题下会变成浅色、直接看不见
+  （那个插件已经卸掉了）。背景色一律不设：全面屏下系统栏是透明的，
+  底色由页面自己透上去。注意枚举命名反直觉，`Dark` 是"深底浅图标"。
 
 ### 打包
 

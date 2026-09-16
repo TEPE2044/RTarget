@@ -17,6 +17,21 @@ const config: CapacitorConfig = {
     // WebView 里用 https 协议加载本地资源，避免被当成不安全来源
     androidScheme: 'https',
   },
+  plugins: {
+    /**
+     * 系统栏（状态栏 + 导航栏）
+     *
+     * insetsHandling 默认就是 'css'，这里显式写出来是为了别被误改：
+     * targetSdk ≥ 35 时 Android 强制 edge-to-edge，页面必然铺到系统栏底下，
+     * 而 Android WebView 对 env(safe-area-inset-*) 支持不可靠（返回空值）。
+     * Capacitor 内核会读真实 WindowInsets，按 dp 注入成 --safe-area-inset-*，
+     * 前端 CSS 里的 --rt-safe-* 就是靠它（见 src/style.css）。
+     * 关掉它（'disable'）上下两条栏会立刻被系统栏压住。
+     */
+    SystemBars: {
+      insetsHandling: 'css',
+    },
+  },
 }
 
 export default config

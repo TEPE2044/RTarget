@@ -37,6 +37,18 @@
   --rt-appbar: 48px;
   --rt-tabbar: 56px;
   --rt-maxw: 640px;
+
+  /* 安全区（状态栏 / 手势条 / 挖孔）。
+     坑：Android WebView 对 env(safe-area-inset-*) 支持很不可靠（返回空值），
+     而 targetSdk ≥ 35 时系统强制 edge-to-edge，页面必然铺到系统栏底下 ——
+     光靠 env() 上下都会被压住。
+     Capacitor 8.3.2+ 的内核（SystemBars，insetsHandling 默认 "css"）会把真实
+     像素值按 dp 注入成 --safe-area-inset-*，所以顺序是：
+     先读注入的变量 → 退回 env()（iOS / 新 WebView）→ 最后 0（桌面浏览器）。 */
+  --rt-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --rt-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --rt-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --rt-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
 }
 
 [data-theme='dark'] {
@@ -91,7 +103,7 @@ body { background: var(--rt-bg); }
   backdrop-filter: saturate(1.6) blur(12px);
   border-bottom: 0.5px solid var(--rt-line);
   /* 顶部把状态栏高度让出来 */
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: var(--rt-safe-top);
 }
 
 .rt-appbar-inner {
@@ -101,8 +113,8 @@ body { background: var(--rt-bg); }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 calc(12px + env(safe-area-inset-right, 0px))
-    0 calc(12px + env(safe-area-inset-left, 0px));
+  padding: 0 calc(12px + var(--rt-safe-right))
+    0 calc(12px + var(--rt-safe-left));
 }
 
 .rt-brand { font-size: 16px; font-weight: 500; letter-spacing: 0.02em; }
@@ -134,9 +146,9 @@ body { background: var(--rt-bg); }
   max-width: var(--rt-maxw);
   margin: 0 auto;
   /* 底部让出导航栏与手势条 */
-  padding: 12px calc(14px + env(safe-area-inset-right, 0px))
-    calc(var(--rt-tabbar) + env(safe-area-inset-bottom, 0px) + 32px)
-    calc(14px + env(safe-area-inset-left, 0px));
+  padding: 12px calc(14px + var(--rt-safe-right))
+    calc(var(--rt-tabbar) + var(--rt-safe-bottom) + 32px)
+    calc(14px + var(--rt-safe-left));
 }
 
 /* ---------- 底部导航 ---------- */
@@ -151,7 +163,7 @@ body { background: var(--rt-bg); }
   -webkit-backdrop-filter: saturate(1.6) blur(12px);
   backdrop-filter: saturate(1.6) blur(12px);
   border-top: 0.5px solid var(--rt-line);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--rt-safe-bottom);
 }
 
 .rt-tabbar-inner {
@@ -203,7 +215,7 @@ body { background: var(--rt-bg); }
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--rt-tabbar) + env(safe-area-inset-bottom, 0px) + 18px);
+  bottom: calc(var(--rt-tabbar) + var(--rt-safe-bottom) + 18px);
   z-index: 25;
   pointer-events: none;
 }
@@ -213,7 +225,7 @@ body { background: var(--rt-bg); }
   margin: 0 auto;
   display: flex;
   justify-content: flex-end;
-  padding: 0 calc(16px + env(safe-area-inset-right, 0px)) 0 16px;
+  padding: 0 calc(16px + var(--rt-safe-right)) 0 16px;
 }
 
 .rt-fab {
@@ -241,10 +253,10 @@ body { background: var(--rt-bg); }
   min-height: 100dvh;
   background: var(--rt-bg);
   color: var(--rt-tx);
-  padding: calc(24px + env(safe-area-inset-top, 0px))
-    calc(20px + env(safe-area-inset-right, 0px))
-    calc(24px + env(safe-area-inset-bottom, 0px))
-    calc(20px + env(safe-area-inset-left, 0px));
+  padding: calc(24px + var(--rt-safe-top))
+    calc(20px + var(--rt-safe-right))
+    calc(24px + var(--rt-safe-bottom))
+    calc(20px + var(--rt-safe-left));
 }
 
 /* ---------- 文字 ---------- */
@@ -433,7 +445,7 @@ body { background: var(--rt-bg); }
   padding-bottom: 0;
 }
 .ant-modal-wrap.rt-sheet .ant-modal-content {
-  padding: 0 0 calc(14px + env(safe-area-inset-bottom, 0px));
+  padding: 0 0 calc(14px + var(--rt-safe-bottom));
   border-radius: 16px 16px 0 0;
   overflow: hidden;
 }

@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { theme as antdTheme, message } from 'ant-design-vue'
 import { isAuthError, useAuth } from './lib/auth'
-import { registerBackButton, syncStatusBar } from './lib/native'
+import { registerBackButton, syncSystemBars } from './lib/native'
 import { useTheme } from './lib/theme'
 import {
   settleAll, getVitality, getLedger, getArchives, getAllNodes,
@@ -165,8 +165,8 @@ onUnmounted(() => {
   if (timer) clearInterval(timer)
 })
 
-// 壳里让状态栏图标跟着深浅主题走（浏览器上无副作用）
-watch(theme, (t) => syncStatusBar(t), { immediate: true })
+// 壳里让系统栏图标跟着深浅主题走（浏览器上无副作用）
+watch(theme, (t) => syncSystemBars(t), { immediate: true })
 
 watch(session, (s) => {
   if (s) refresh()
