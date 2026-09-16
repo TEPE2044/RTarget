@@ -159,8 +159,15 @@ async function sendCode(email: string) {
  *
  * 先立门再验：verifyOtp 一成功会话就有了，如果等 await 回来才设
  * passwordPending，中间那一帧会闪进主界面。
+ *
+ * 返回值 = **要不要去设密码**：
+ * - 账号已经有密码 → 直接放行（这就是"验证码登录"，不能再逼人家设一遍）
+ * - 账号没密码（首次验证 / 只走验证码注册过）→ 要求设密码
+ *
+ * 判断依据是数据库函数 has_password()（见 migration 0014）——
+ * 密码是否存在只有 auth.users 知道，客户端读不到，只能用 security definer 开个小口。
  */
-async function verifyCode(email: string, token: string) {
+async function verifyCode(email: string, token: string): Promise<boolean> {
   passwordPending.value = true
   try {
     const { error } = await supabase.auth.verifyOtp({
@@ -169,9 +176,30 @@ async function verifyCode(email: string, token: string) {
       type: 'email',
     })
     if (error) throw error
+
+    const needPassword = !(await hasPassword())
+    passwordPending.value = needPassword
+    return needPassword
   } catch (e) {
     passwordPending.value = false
     throw e
+  }
+}
+
+/**
+ * 当前账号设过密码没有。
+ *
+ * 查不到时返回 true（当作"有密码"）—— 宁可少让人设一次密码，
+ * 也不能因为一个辅助函数出问题就把人挡在门外（比如 0014 还没跑）。
+ */
+async function hasPassword(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('has_password')
+    if (error) throw error
+    return data !== false
+  } catch (e) {
+    console.warn('[auth] 查询 has_password 失败，按"已设过密码"处理，不拦登录：', e)
+    return true
   }
 }
 

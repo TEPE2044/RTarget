@@ -183,10 +183,16 @@ async function doVerify() {
 
   busy.value = true
   try {
-    await verifyCode(email.value, tokenDigits.value)
-    // 只有真的验证通过才推进 —— 见上面那段注释，这里不能省
-    step.value = 'password'
-    startPwdWindow()
+    // 验证码过了之后分两种情况：账号已经有密码 → 直接放行；没有 → 去设密码
+    const needPassword = await verifyCode(email.value, tokenDigits.value)
+    clearTimers()
+    if (needPassword) {
+      step.value = 'password'
+      startPwdWindow()
+    } else {
+      message.success('验证成功，欢迎回来')
+      // passwordPending 已是 false，App.vue 会自动切到主界面
+    }
   } catch (e) {
     error.value = friendlyError(e)
     // 验证失败必须把界面退回输码那一步，并停掉已经开始的倒计时
@@ -256,10 +262,8 @@ async function doLogin() {
           <button type="button" class="rt-segbtn" :class="{ active: mode === 'code' }"
             @click="switchMode('code')">
             <span class="rt-meta">邮箱验证码登录</span>
-            
           </button>
         </div>
-  
         <!-- ============ 登录：邮箱 + 密码 ============ -->
         <a-form v-if="mode === 'login'" layout="vertical" @submit.prevent="doLogin">
           <a-form-item label="邮箱">
@@ -319,10 +323,12 @@ async function doLogin() {
           </p>
         </a-form>
 
-        <!-- ============ 验证码 第 3 步：设密码 ============ -->
+        <!-- ============ 验证码 第 3 步：设密码 ============
+             只有"这个账号还没设过密码"才会走到这里。
+             已经设过密码的账号，验证码一过就直接放行了（见 doVerify）。 -->
         <a-form v-else layout="vertical" @submit.prevent="doSetPassword">
           <p class="rt-meta" style="margin: 0 0 12px">
-            邮箱已验证。设一个密码 —— 手机和网页都用它登录，不用再收验证码。
+            这个账号还没设过密码。设一个 —— 之后手机和网页都能直接用密码登录，不用再收验证码。
           </p>
           <a-form-item label="设置密码（至少 6 位）">
             <a-input-password v-model:value="pwd1" size="large" placeholder="想一个记得住的" />
