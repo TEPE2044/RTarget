@@ -196,7 +196,7 @@ async function onSeal() {
     message.success(
       deducted < 0
         ? `已封档，扣除 ${Math.abs(deducted)} 点活力值`
-        : '已封档（干净了结，免费）'
+        : '已封档 —— 全部了结，免费'
     )
     activeArchiveId.value = null
     await refresh()
@@ -391,7 +391,7 @@ function archiveGoalCount(id: string): number {
                 <span class="rt-num" style="font-size: 13px; color: var(--rt-red)">{{ stats.lost }}</span>
               </span>
             </div>
-            <span class="rt-meta rt-push" style="margin-bottom: 4px">四舍五入取整 · 穿透负值后禁押高档</span>
+            <span class="rt-meta rt-push" style="margin-bottom: 4px">取整不留小数 · 活力值为负时禁押高档与 ALL IN</span>
           </div>
 
           <div class="rt-card rt-strip rt-gap12">
@@ -427,7 +427,7 @@ function archiveGoalCount(id: string): number {
                   <span class="rt-li-main">{{ g.a.content }}</span>
                   <span class="rt-meta">{{ archiveName(g.a.archive_id) }}</span>
                 </div>
-                <p v-if="pendingGroups.length === 0" class="rt-meta" style="margin: 8px 0 0">手上是干净的。</p>
+                <p v-if="pendingGroups.length === 0" class="rt-meta" style="margin: 8px 0 0">暂时没有未完成的事。</p>
               </div>
             </div>
 
@@ -505,7 +505,7 @@ function archiveGoalCount(id: string): number {
                     <span class="rt-num" style="font-size: 13px; color: var(--rt-tx)">{{ archiveGoalCount(a.id) }}</span> 个
                   </span>
                   <span class="rt-meta">封档
-                    <span v-if="a.sealed_free" class="rt-num" style="font-size: 13px; color: var(--rt-green)">免费（干净了结）</span>
+                    <span v-if="a.sealed_free" class="rt-num" style="font-size: 13px; color: var(--rt-green)">免费（全部了结）</span>
                     <span v-else class="rt-num" style="font-size: 13px; color: var(--rt-red)">
                       扣 {{ Math.abs(findSealPenalty(ledger, a.id) ?? 0) }} 分
                     </span>
@@ -543,7 +543,7 @@ function archiveGoalCount(id: string): number {
       <a-modal v-model:open="showNewArchive" title="开新存档" :footer="null" :width="380">
         <a-input v-model:value="newArchiveName" placeholder="存档名，比如 2026 秋招冲刺"
           @keyup.enter="addArchive()" />
-        <p class="rt-meta" style="margin: 8px 0 0">开新档是加压不是重开 —— 活力值全局公用，旧债不清。</p>
+        <p class="rt-meta" style="margin: 8px 0 0">开新档不是重来 —— 活力值全局公用，之前扣掉的分不会回来。</p>
         <div style="display: flex; gap: 8px; margin-top: 16px">
           <button class="rbtn-primary rbtn-lg" :disabled="busy || !newArchiveName.trim()"
             @click="addArchive()">创建</button>

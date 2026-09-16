@@ -111,9 +111,9 @@ function canConcede(n: GameNode | null): boolean {
 function compoundVerdict(a: GameNode): string {
   const x = a.compound_a_done
   const y = a.compound_c_done
-  if (x && y) return 'A✓ C✓ · 两边都做完了，已返还扣分'
+  if (x && y) return 'A✓ C✓ · 两边都做完了，扣的分已全部返还'
   if (!x && !y) return 'A✗ C✗ · 两边都没做，已再扣一次'
-  return `A${x ? '✓' : '✗'} C${y ? '✓' : '✗'} · 只做了一边，无分变动`
+  return `A${x ? '✓' : '✗'} C${y ? '✓' : '✗'} · 只做了一边，分数不变`
 }
 
 /** C 没开启时的说明：A 正常达成的话惩罚永远不会触发 */
@@ -172,7 +172,7 @@ async function onConcede(n: GameNode, tip: string) {
           <header class="rt-cmp-head">
             <span class="rt-t14s" style="color: var(--rt-amber)">惩罚复合体</span>
             <span class="rt-meta rt-hide-sm" style="color: var(--rt-amber)">
-              原目标未完成，扣分已生效 —— 两边都做回来，把分拿回去
+              原目标未完成，扣分已生效 —— 两边都做完，扣的分全部返还
             </span>
             <span class="rt-meta rt-push" style="color: var(--rt-amber); white-space: nowrap">
               C 死线 {{ dueText(g.c.due_at) }} · {{ leftText(g.c.due_at) }}
@@ -191,9 +191,9 @@ async function onConcede(n: GameNode, tip: string) {
               </p>
               <div style="display: flex; gap: 8px; margin-top: 12px">
                 <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy"
-                  @click="onComplete(g.a, '已补做原目标，两边都完成即返还扣分')">补做完成</button>
+                  @click="onComplete(g.a, '已补做原目标 —— 两边都完成就全部返还')">补做完成</button>
                 <button v-else class="rbtn" disabled>已补做</button>
-                <a-popconfirm v-if="canConcede(g.a)" title="放弃补做？A 的扣分不再追缴，但也不会返还。"
+                <a-popconfirm v-if="canConcede(g.a)" title="放弃补做？A 的扣分保持不变，也不会返还。"
                   ok-text="放弃" cancel-text="取消" @confirm="onConcede(g.a, '已放弃补做')">
                   <button class="rbtn rbtn-danger" :disabled="busy">放弃</button>
                 </a-popconfirm>
@@ -211,8 +211,8 @@ async function onConcede(n: GameNode, tip: string) {
               </p>
               <div style="display: flex; gap: 8px; margin-top: 12px">
                 <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy"
-                  @click="onComplete(g.c, '已把拖延的事做掉，两边都完成即返还扣分')">做掉</button>
-                <button v-else class="rbtn" disabled>已做掉</button>
+                  @click="onComplete(g.c, '已把拖延的事做完 —— 两边都完成就全部返还')">完成</button>
+                <button v-else class="rbtn" disabled>已完成</button>
                 <a-popconfirm v-if="canConcede(g.c)" title="放弃惩罚？C 的死线一到就会再扣一次 A + C。"
                   ok-text="放弃" cancel-text="取消" @confirm="onConcede(g.c, '已放弃惩罚')">
                   <button class="rbtn rbtn-danger" :disabled="busy">放弃</button>
@@ -223,7 +223,7 @@ async function onConcede(n: GameNode, tip: string) {
 
           <footer class="rt-cmp-foot">
             <span class="rt-meta">都完成 → <span style="color: var(--rt-green)">返还 {{ g.a.stake + g.c.stake }} 分</span></span>
-            <span class="rt-meta">只做一个 → 无分变动</span>
+            <span class="rt-meta">只做一个 → 分数不变</span>
             <span class="rt-meta">都没做 → <span style="color: var(--rt-red)">再扣 {{ g.a.stake + g.c.stake }} 分</span></span>
           </footer>
         </template>
@@ -294,7 +294,7 @@ async function onConcede(n: GameNode, tip: string) {
                     <span class="rt-meta">死线 {{ dueText(g.c.due_at) }} · {{ leftText(g.c.due_at) }}</span>
                     <span class="rt-push" style="display: flex; gap: 8px">
                       <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy"
-                        @click="onComplete(g.c, '已把拖延的事做掉')">把拖延的事做掉</button>
+                        @click="onComplete(g.c, '已把拖延的事做完')">完成</button>
                       <a-popconfirm v-if="canConcede(g.c)" title="放弃惩罚？复合体会按最终结果结算。"
                         ok-text="放弃" cancel-text="取消" @confirm="onConcede(g.c, '已放弃惩罚')">
                         <button class="rbtn rbtn-danger" :disabled="busy">放弃</button>
@@ -313,7 +313,7 @@ async function onConcede(n: GameNode, tip: string) {
 
     <div v-if="shown.length === 0" class="rt-card" style="padding: 28px; text-align: center">
       <span class="rt-meta">
-        {{ variant === 'open' ? '手上是干净的 —— 没有正在执行的事。' : '这个档还没有已完成的目标。' }}
+        {{ variant === 'open' ? '没有未完成的事。' : '这个档还没有已完成的目标。' }}
       </span>
     </div>
   </div>
