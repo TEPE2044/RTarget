@@ -360,3 +360,16 @@ export async function sealArchive(archiveId: string): Promise<number> {
   if (error) throw error
   return Number(data)
 }
+
+/**
+ * 删除一个已封档的存档。返回被解绑的流水笔数。
+ * 只会删掉存档和它的节点；活力值流水保留（只断开归属），所以分数不变。
+ * 未封档的存档删不掉，会由函数抛错。
+ */
+export async function deleteArchive(archiveId: string): Promise<number> {
+  // 先做一次登录态体检，账号失效时抛出的错误带 401/403，上层才能识别并踢回登录页
+  await requireUser()
+  const { data, error } = await supabase.rpc('delete_archive', { p_archive_id: archiveId })
+  if (error) throw error
+  return Number(data)
+}

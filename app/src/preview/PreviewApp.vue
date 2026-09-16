@@ -261,6 +261,7 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
                 <span class="pill p-gray">已封档</span>
                 <span class="rt-t14s">{{ s.name }}</span>
                 <span class="rt-meta rt-push">{{ s.at }}</span>
+                <button class="rbtn rbtn-danger">删除</button>
               </div>
               <div class="rt-line1" style="margin-top: 10px; gap: 22px">
                 <span class="rt-meta">目标 <span class="rt-num" style="font-size: 13px; color: var(--rt-tx)">{{ s.goals }}</span> 个</span>

@@ -5,7 +5,7 @@ import { isAuthError, useAuth } from './lib/auth'
 import { useTheme } from './lib/theme'
 import {
   settleAll, getVitality, getLedger, getArchives, getAllNodes,
-  createArchive, createGoal, sealArchive, hasPending, inCompound,
+  createArchive, createGoal, sealArchive, deleteArchive, hasPending, inCompound,
   getArchiveLedgerSums, findSealPenalty,
 } from './lib/game'
 import type { Archive, GameNode, LedgerEntry, Tier } from './lib/game'
@@ -208,8 +208,29 @@ async function onSeal() {
   }
 }
 
-// ---------- 新建目标 ----------
+/**
+ * 删除已封档的存档。
+ * 只会删存档和它的节点；活力值流水保留（只断开归属），所以分数不变 ——
+ * 否则「封档扣 10% → 删档」就成了刷分漏洞。
+ */
+async function onDeleteArchive(a: Archive) {
+  busy.value = true
+  try {
+    const detached = await deleteArchive(a.id)
+    if (historyArchiveId.value === a.id) historyArchiveId.value = null
+    message.success(
+      `已删除存档「${a.name}」` +
+      (detached > 0 ? `，${detached} 笔流水转为无归属（活力值不变）` : '')
+    )
+    await refresh()
+  } catch (e) {
+    await reportError(e)
+  } finally {
+    busy.value = false
+  }
+}
 
+// ---------- 新建目标 ----------
 function addDays(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number)
   const dt = new Date(y, m - 1, d)
@@ -473,6 +494,11 @@ function archiveGoalCount(id: string): number {
                   <span class="rt-meta rt-push">
                     {{ a.sealed_at ? new Date(a.sealed_at).toLocaleString('zh-CN') : '' }}
                   </span>
+                  <a-popconfirm
+                    title="删除这个存档？存档和它的目标都会被删掉。活力值流水会保留，所以分数不变。"
+                    ok-text="删除" cancel-text="取消" @confirm="onDeleteArchive(a)">
+                    <button class="rbtn rbtn-danger" :disabled="busy" @click.stop>删除</button>
+                  </a-popconfirm>
                 </div>
                 <div class="rt-line1" style="margin-top: 10px; gap: 22px">
                   <span class="rt-meta">目标
