@@ -1,6 +1,23 @@
 node_modules/
 dist/
-.env.local
-.env*.local
+
+# ---------- 密钥与凭据（绝不能上传）----------
+# .env.local 已经在忽略，但 .env 本身没有 —— 补全，别漏
+.env
+.env.*
+!.env.example
+
+# Android 签名密钥：一旦入库等于泄露，别人能伪造你的应用更新
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+
+# 打包产物
+*.apk
+*.aab
+
+# ---------- 工具与编辑器 ----------
+# reasonix.toml 是 Reasonix 的权限白名单，里面塞满了历史命令全文，不该上传
 .reasonix/
 reasonix.toml
