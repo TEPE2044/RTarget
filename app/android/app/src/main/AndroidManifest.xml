@@ -19,18 +19,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- 魔法链接回跳。
-                 Supabase 验证完邮件里的链接后，会把浏览器 302 到
-                 com.rtarget.app://login-callback#access_token=...，
-                 这个 filter 负责把它接回应用（配合 @capacitor/app 的 appUrlOpen 事件）。
-                 上面 launchMode 已经是 singleTask，所以是复用已有实例、不会新开一个窗口。
-                 注意：改了这里要重新 cap sync + 重新打包才生效。 -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.rtarget.app" android:host="login-callback" />
-            </intent-filter>
         </activity>
 
         <provider

@@ -13,7 +13,7 @@ import type { Archive, GameNode, LedgerEntry, Tier } from './lib/game'
 import LoginCard from './components/LoginCard.vue'
 import NodeList from './components/NodeList.vue'
 
-const { session, loading, signOut, forceSignOut } = useAuth()
+const { session, loading, signOut, forceSignOut, passwordPending, setPassword } = useAuth()
 const { theme, toggleTheme } = useTheme()
 
 // antd v4 ConfigProvider 主题算法（深/浅）
@@ -151,11 +151,13 @@ onMounted(() => {
 
   // 只有装进壳里才生效，浏览器上是空操作
   registerBackButton({
-    hasModalOpen: () => showNewArchive.value || showGoalForm.value || showMore.value,
+    hasModalOpen: () =>
+      showNewArchive.value || showGoalForm.value || showMore.value || showPassword.value,
     closeModal: () => {
       showNewArchive.value = false
       showGoalForm.value = false
       showMore.value = false
+      showPassword.value = false
     },
     currentPage: () => page.value,
     goHome: () => { page.value = 'home' },
@@ -186,6 +188,27 @@ const showNewArchive = ref(false)
 const newArchiveName = ref('')
 /** 顶栏「更多」：手机上用底部抽屉，比下拉菜单好点 */
 const showMore = ref(false)
+/** 改密码抽屉 */
+const showPassword = ref(false)
+const newPwd1 = ref('')
+const newPwd2 = ref('')
+
+async function onChangePassword() {
+  if (newPwd1.value.length < 6) return message.warning('密码至少 6 位')
+  if (newPwd1.value !== newPwd2.value) return message.warning('两次输的不一样')
+  busy.value = true
+  try {
+    await setPassword(newPwd1.value)
+    message.success('密码已更新，下次用新密码登录')
+    showPassword.value = false
+    newPwd1.value = ''
+    newPwd2.value = ''
+  } catch (e) {
+    await reportError(e)
+  } finally {
+    busy.value = false
+  }
+}
 
 async function addArchive() {
   const name = newArchiveName.value.trim()
@@ -372,7 +395,7 @@ function archiveGoalCount(id: string): number {
       <span class="rt-meta">载入中…</span>
     </div>
 
-    <LoginCard v-else-if="!session" />
+    <LoginCard v-else-if="!session || passwordPending" />
 
     <div v-else class="rt">
       <!-- ---------- 顶部窄栏 ---------- -->
@@ -637,7 +660,30 @@ function archiveGoalCount(id: string): number {
           <button class="rt-sheetitem" :disabled="busy" @click="refresh(); showMore = false">
             刷新数据
           </button>
+          <button class="rt-sheetitem" @click="showMore = false; showPassword = true">
+            设置密码
+          </button>
           <button class="rt-sheetitem rt-sheetitem-danger" @click="signOut()">退出登录</button>
+        </div>
+      </a-modal>
+
+      <!-- ---------- 设置 / 修改密码（底部抽屉） ---------- -->
+      <a-modal v-model:open="showPassword" title="设置密码" :footer="null" :width="580"
+        wrap-class-name="rt-sheet">
+        <p class="rt-meta" style="margin: 0 0 12px">
+          设完之后手机和网页都能用这个密码登录，不用再收验证码。
+        </p>
+        <a-form layout="vertical">
+          <a-form-item label="新密码（至少 6 位）">
+            <a-input-password v-model:value="newPwd1" size="large" />
+          </a-form-item>
+          <a-form-item label="再输一遍">
+            <a-input-password v-model:value="newPwd2" size="large" @pressEnter="onChangePassword" />
+          </a-form-item>
+        </a-form>
+        <div class="rt-sheet-actions">
+          <button class="rbtn-primary" :disabled="busy" @click="onChangePassword()">保存</button>
+          <button class="rbtn" @click="showPassword = false">取消</button>
         </div>
       </a-modal>
 

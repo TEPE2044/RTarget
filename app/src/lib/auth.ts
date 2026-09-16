@@ -1,20 +1,65 @@
 import { ref, readonly } from 'vue'
-import { App as CapApp } from '@capacitor/app'
 import { supabase } from './supabase'
 import type { Session } from '@supabase/supabase-js'
-import { isNative } from './native'
 
-// ---------- 登录态 ----------
+/**
+ * 登录态
+ *
+ * 流程定稿（2026-09-16）：**彻底不用魔法链接**，回归基本功 ——
+ *
+ *   1. 填邮箱 → 发 6 位验证码
+ *   2. 输了验证码 → 邮箱算验证过，拿到会话
+ *   3. 立刻要求设置密码 → 设完才进应用
+ *
+ * 为什么是这个流程：验证码就是邮件里的一串数字，不需要点链接，
+ * 所以不受"邮件客户端内置浏览器拦自定义 scheme"那一类问题影响 ——
+ * 手机、电脑、任何邮件 App 都一样。注册 / 补密码 / 忘记密码三件事
+ * 也被这一个流程全覆盖了（验证完一律重设密码）。
+ *
+ * 实现注意（错一个就白干）：
+ * - verifyOtp 的 type 必须是 'email'（不是 'magiclink'）
+ * - 调 signInWithOtp 时**不要传 emailRedirectTo** —— 传了 Supabase 就会
+ *   发链接而不是验证码
+ * - 邮件模板里必须出现 {{ .Token }}（Supabase 后台改，见 README）
+ */
+
+// ---------- 状态 ----------
 
 const session = ref<Session | null>(null)
 const loading = ref(true)
-const sentMagicLink = ref(false)
+
 /**
- * 深链回调失败时的提示。
- * 这类错误不是用户点按钮触发的（是邮件链接跳回来才发生的），
- * 没法走 LoginCard 自己的 try/catch，所以单独留一个出口给界面看。
+ * 「验证码过了、但还没设密码」。
+ *
+ * 存在的意义：verifyOtp 一成功，supabase 就建立会话了，主界面会立刻露出来。
+ * 所以 App.vue 的登录门要按这个标记再挡一道（见 App.vue 的 v-else-if）。
+ * 纯内存态：应用被杀掉后重开会话仍在、这个标记为 false，就直接进应用了 ——
+ * 那时邮箱已验证，属于本人，不构成风险；想设密码可以去「更多 → 设置密码」。
  */
+const passwordPending = ref(false)
+
+/** 不是用户点按钮触发的错误（比如登录态失效）也往这里放 */
 const authError = ref('')
+
+/**
+ * 把 Supabase 的英文报错翻成人话。
+ * 这几个是实际会撞到的，剩下的原样透出（至少能搜）。
+ */
+export function friendlyError(e: unknown): string {
+  const raw = (e as { message?: string })?.message ?? String(e)
+  const map: [RegExp, string][] = [
+    [/rate limit|too many requests/i, '发送太频繁了 —— Supabase 限制每个邮箱 60 秒一次，等一会儿再试'],
+    [/token has expired or is invalid/i, '验证码不对或已过期，重新发一个吧'],
+    [/invalid login credentials/i, '邮箱或密码不对'],
+    [/email not confirmed/i, '这个邮箱还没验证过，请用「邮箱验证码」走一遍'],
+    [/user already registered/i, '这个邮箱已经注册过了，直接用密码登录，或走验证码重设密码'],
+    [/password should be at least/i, '密码太短了（至少 6 位）'],
+    [/unable to validate email|invalid format/i, '邮箱格式不对'],
+    [/failed to fetch|network/i, '连不上服务，检查下网络'],
+  ]
+  for (const [re, zh] of map) if (re.test(raw)) return zh
+  return raw
+}
 
 /**
  * 本地强制登出。
@@ -28,7 +73,7 @@ async function forceSignOut() {
     // 服务端报错无所谓，本地清掉就够了
   }
   session.value = null
-  sentMagicLink.value = false
+  passwordPending.value = false
 }
 
 supabase.auth.onAuthStateChange((event, s) => {
@@ -86,104 +131,81 @@ document.addEventListener('visibilitychange', async () => {
   }
 })
 
-// ---------- 壳里的魔法链接回跳（深链） ----------
+// ---------- 邮箱验证码 ----------
 
 /**
- * 应用自己的 URL scheme。
- * 三处必须保持一致，缺一处邮件链接就点不开应用：
- *   1. 这里的常量
- *   2. android/app/src/main/AndroidManifest.xml 里的 intent-filter（scheme + host）
- *   3. Supabase 后台 Authentication → URL Configuration → Redirect URLs
- */
-const NATIVE_REDIRECT = 'com.rtarget.app://login-callback'
-
-/** 浏览器上用当前站点；壳里用自定义 scheme */
-function redirectTo(): string {
-  return isNative ? NATIVE_REDIRECT : window.location.origin
-}
-
-/**
- * 处理从邮件链接回跳进来的 URL。
+ * 发验证码到邮箱。新邮箱会自动建号（shouldCreateUser 默认 true）——
+ * 这正是想要的：先把号建出来（此时未验证、无密码、进不去任何数据），
+ * 验证码一过就要求设密码，设完才算真的注册完成。
  *
- * Supabase 验证完会把凭据塞在 fragment 里带回来：
- *   com.rtarget.app://login-callback#access_token=...&refresh_token=...
- *
- * 壳里根本没有"页面 URL"这回事，supabase 自带的 detectSessionInUrl 帮不上忙，
- * 只能自己把 token 捞出来交给 setSession。
+ * **绝对不要传 emailRedirectTo**：传了 Supabase 就会把邮件内容换成登录链接，
+ * 用户收到的就不是验证码了。
  */
-async function handleAuthDeepLink(url: string) {
-  if (!url.startsWith(NATIVE_REDIRECT)) return
-
-  const hash = url.includes('#') ? url.slice(url.indexOf('#') + 1) : (url.split('?')[1] ?? '')
-  const params = new URLSearchParams(hash)
-
-  // 验证失败时 Supabase 会把原因带回来。先把它抛出去 ——
-  // 否则用户只会看到"点了链接没反应"，没法排查。
-  const reason = params.get('error_description') ?? params.get('error')
-  if (reason) throw new Error(decodeURIComponent(reason.replace(/\+/g, ' ')))
-
-  const accessToken = params.get('access_token')
-  const refreshToken = params.get('refresh_token')
-  if (!accessToken || !refreshToken) {
-    throw new Error('回调链接里没有登录凭据，可能是链接已过期或已经用过一次了')
-  }
-
-  const { error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  })
-  if (error) throw error
-
-  sentMagicLink.value = false
-}
-
-if (isNative) {
-  CapApp.addListener('appUrlOpen', async ({ url }) => {
-    authError.value = ''
-    try {
-      await handleAuthDeepLink(url)
-    } catch (e) {
-      authError.value = (e as Error).message
-    }
-  })
-}
-
-// ---------- 魔法链接登录 ----------
-
-/** 发送魔法链接到邮箱（单人自用：邮箱即身份） */
-async function sendMagicLink(email: string) {
-  sentMagicLink.value = false
+async function sendCode(email: string) {
   authError.value = ''
   const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      // 从哪台设备发起就用哪边的回调地址：
-      // 手机上点链接应该跳回应用，电脑上点应该跳回网页
-      emailRedirectTo: redirectTo(),
-    },
+    email: email.trim(),
+    options: { shouldCreateUser: true },
   })
   if (error) throw error
-  sentMagicLink.value = true
 }
 
-// ---------- 邮箱密码登录（本地测试账号，绕开邮件限流） ----------
+/**
+ * 校验验证码。类型必须是 'email'。
+ *
+ * 先立门再验：verifyOtp 一成功会话就有了，如果等 await 回来才设
+ * passwordPending，中间那一帧会闪进主界面。
+ */
+async function verifyCode(email: string, token: string) {
+  passwordPending.value = true
+  try {
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: token.trim(),
+      type: 'email',
+    })
+    if (error) throw error
+  } catch (e) {
+    passwordPending.value = false
+    throw e
+  }
+}
+
+/**
+ * 设置密码（需要有会话 —— 也就是验证码刚过那段，或已登录状态下改密码）。
+ * 设完把门打开，进入应用。
+ */
+async function setPassword(password: string) {
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) throw error
+  passwordPending.value = false
+}
+
+// ---------- 邮箱密码登录 ----------
 
 async function signInWithPassword(email: string, password: string) {
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  authError.value = ''
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  })
   if (error) throw error
 }
 
 async function signOut() {
   await supabase.auth.signOut()
+  passwordPending.value = false
 }
 
 export function useAuth() {
   return {
     session: readonly(session),
     loading: readonly(loading),
-    sentMagicLink: readonly(sentMagicLink),
+    passwordPending: readonly(passwordPending),
     authError: readonly(authError),
-    sendMagicLink,
+    sendCode,
+    verifyCode,
+    setPassword,
     signInWithPassword,
     signOut,
     forceSignOut,

@@ -192,26 +192,59 @@ dex 阶段峰值内存不够时 Gradle 守护进程会**无声无息地消失** 
 2. 关掉不用的内存大户（Android Studio、多余的浏览器）
 3. 重跑 —— 已编译的部分会命中缓存，通常几十秒就过
 
-### 魔法链接登录（深链）
+### 登录 / 注册（邮箱验证码，不用魔法链接）
 
-壳里没有"页面 URL"这个概念，Supabase 邮件链接默认跳 `https://localhost` 是接不住的，
-所以改走自定义 scheme。**三处必须一致，缺一处邮件里的链接就点不开应用：**
+**流程定稿（2026-09-16）：彻底不用魔法链接。**
 
-| # | 位置 | 值 |
-|---|---|---|
-| 1 | `src/lib/auth.ts` 的 `NATIVE_REDIRECT` | `com.rtarget.app://login-callback` |
-| 2 | `android/app/src/main/AndroidManifest.xml` 的 intent-filter | `scheme=com.rtarget.app`、`host=login-callback` |
-| 3 | **Supabase 后台** → Authentication → URL Configuration → Redirect URLs | `com.rtarget.app://**` |
+```
+「登录」        邮箱 + 密码 ────────────────────────► 进
+「邮箱验证码」  邮箱 → 6 位验证码 → 设置密码 ───────► 进
+```
 
-第 3 步只能在后台手动加（代码改不了你的 Supabase 项目）。
+第二种同时是**注册、补密码、忘记密码** —— 验证完一律重设一次密码，一套流程三种用途。
 
-完整链路：壳里请求魔法链接 → 邮件里点 → Supabase 验证 → 302 到自定义 scheme →
-系统把应用拉起来（Manifest 里 `launchMode="singleTask"`，所以是复用已有实例而不是新开）→
-Capacitor 触发 `appUrlOpen` → `auth.ts` 把 fragment 里的 token 交给 `setSession`。
+为什么废掉魔法链接：它必须点邮件里的链接，而链接要跳回应用就得走自定义 scheme，
+**邮件客户端的内置浏览器（微信等）会把它拦掉** —— 这不是配置问题，换谁都躲不开。
+验证码只是邮件里的一串数字，不点链接，所以任何端、任何邮件 App 都一样。
 
-浏览器不受影响，仍用 `window.location.origin` —— 所以**手机上点跳应用、电脑上点跳网页**。
+技术要点（错一个就白干）：
 
-> ⚠️ 改完 Manifest 要重新 `cap:sync` + 重新打包才生效。
+| 点 | 值 |
+|---|---|
+| `verifyOtp` 的 type | 必须是 `'email'`（不是 `'magiclink'`） |
+| `signInWithOtp` 的参数 | **不要传 `emailRedirectTo`** —— 传了 Supabase 就把邮件换成链接 |
+| 邮件模板 | 必须包含 `{{ .Token }}` |
+
+实现位置：`src/lib/auth.ts`（`sendCode` / `verifyCode` / `setPassword`）、
+`src/components/LoginCard.vue`（三步界面）。
+
+「验证码过了但还没设密码」这一段由 `passwordPending` 挡着（见 `App.vue` 的登录门）——
+否则 `verifyOtp` 一成功会话就建立了，主界面会立刻露出来。
+
+### Supabase 后台要配什么
+
+**① Email Templates**（Authentication → Email Templates）
+
+`signInWithOtp` 用的模板是 **Magic Link**；新用户首次请求走的是 **Confirm signup**。
+**两个都改成下面这样**（只留验证码、不要留链接 —— 留着链接就等于把上面那个坑又请回来）：
+
+```html
+<h2>确认你的邮箱</h2>
+<p>在 RTarget 里输入这个验证码：</p>
+<p style="font-size: 28px; letter-spacing: 6px; font-weight: 500">{{ .Token }}</p>
+<p>1 小时内有效，且只能用一次。</p>
+```
+
+`Reset Password` 模板同理（如果以后做忘记密码的独立入口）。
+
+**② 频率限制（会被咬）**
+
+Supabase 自带邮件服务限流很狠：**每个邮箱 60 秒一次**，免费项目每小时总共只能发几封。
+调试注册时很容易撞到 `email rate limit exceeded` 然后误以为代码坏了。
+要根治就配自己的 SMTP（Authentication → SMTP Settings）。
+
+> 历史上配过深链（`com.rtarget.app://login-callback` + Manifest 的 intent-filter），
+> 已经全部删除。要恢复的话看 git 历史里 `6323e8e` 这个提交。
 
 ### 已知待办
 

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import NodeList from '../components/NodeList.vue'
+import LoginCard from '../components/LoginCard.vue'
 import type { GameNode } from '../lib/game'
 
 // dev-only 排版预览：真实组件 + 假数据，不连库。
 // 打开 http://localhost:5173/preview.html 看，构建时不会被打包。
 // 支持 ?tab=0|1|2|3 与 ?theme=light|dark，方便无头截图逐个页面出图。
+// ?auth=email|verify|password 直接看登录/注册那三步（走 LoginCard 的 devPreview）。
 
 const DAY = 86_400_000
 const at = (offsetDays: number) => {
@@ -100,6 +102,10 @@ const q = new URLSearchParams(location.search)
 const tab = ref(Number(q.get('tab') ?? 0))
 const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light')
 
+/** ?auth=... 时整屏渲染登录/注册流程（走真实组件，不调接口） */
+type AuthStep = 'login' | 'code-email' | 'code-verify' | 'code-password'
+const authMode = ref<AuthStep | null>((q.get('auth') as AuthStep | null) ?? null)
+
 // ---- 设目标表单的预览状态（C 死线 = A 之后 1~3 天）----
 const pDue = ref('2026-08-01')
 const pOffset = ref(3)
@@ -159,7 +165,9 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
 </script>
 
 <template>
-  <div class="rt">
+  <LoginCard v-if="authMode" :dev-preview="authMode" />
+
+  <div v-else class="rt">
     <pre v-if="debugInfo" style="position: fixed; inset: 0 0 auto 0; z-index: 99; margin: 0; padding: 6px;
       background: #fff; color: #000; font-size: 10px; line-height: 1.35; white-space: pre-wrap">{{ debugInfo }}</pre>
     <header class="rt-appbar">
