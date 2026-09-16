@@ -23,7 +23,9 @@ select
 
   -- 下面这列是为了说明"为什么必须走函数"：
   -- a = NO ACTION（默认），意味着直接删 archives 会被流水表的外键拦住
-  (select string_agg(c.conname || ' = ' || c.confdeltype, ', ' order by c.conname)
+  -- 用 concat() 而不是 || ：confdeltype 是内部类型 "char"，
+  -- text || "char" 会报 "operator is not unique"
+  (select string_agg(concat(c.conname, ' = ', c.confdeltype), ', ')
      from pg_constraint c
      join pg_class t on t.oid = c.conrelid
     where t.relname = 'vitality_ledger' and c.contype = 'f')
