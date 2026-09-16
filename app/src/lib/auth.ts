@@ -1,12 +1,20 @@
 import { ref, readonly } from 'vue'
+import { App as CapApp } from '@capacitor/app'
 import { supabase } from './supabase'
 import type { Session } from '@supabase/supabase-js'
+import { isNative } from './native'
 
 // ---------- 登录态 ----------
 
 const session = ref<Session | null>(null)
 const loading = ref(true)
 const sentMagicLink = ref(false)
+/**
+ * 深链回调失败时的提示。
+ * 这类错误不是用户点按钮触发的（是邮件链接跳回来才发生的），
+ * 没法走 LoginCard 自己的 try/catch，所以单独留一个出口给界面看。
+ */
+const authError = ref('')
 
 /**
  * 本地强制登出。
@@ -78,15 +86,80 @@ document.addEventListener('visibilitychange', async () => {
   }
 })
 
+// ---------- 壳里的魔法链接回跳（深链） ----------
+
+/**
+ * 应用自己的 URL scheme。
+ * 三处必须保持一致，缺一处邮件链接就点不开应用：
+ *   1. 这里的常量
+ *   2. android/app/src/main/AndroidManifest.xml 里的 intent-filter（scheme + host）
+ *   3. Supabase 后台 Authentication → URL Configuration → Redirect URLs
+ */
+const NATIVE_REDIRECT = 'com.rtarget.app://login-callback'
+
+/** 浏览器上用当前站点；壳里用自定义 scheme */
+function redirectTo(): string {
+  return isNative ? NATIVE_REDIRECT : window.location.origin
+}
+
+/**
+ * 处理从邮件链接回跳进来的 URL。
+ *
+ * Supabase 验证完会把凭据塞在 fragment 里带回来：
+ *   com.rtarget.app://login-callback#access_token=...&refresh_token=...
+ *
+ * 壳里根本没有"页面 URL"这回事，supabase 自带的 detectSessionInUrl 帮不上忙，
+ * 只能自己把 token 捞出来交给 setSession。
+ */
+async function handleAuthDeepLink(url: string) {
+  if (!url.startsWith(NATIVE_REDIRECT)) return
+
+  const hash = url.includes('#') ? url.slice(url.indexOf('#') + 1) : (url.split('?')[1] ?? '')
+  const params = new URLSearchParams(hash)
+
+  // 验证失败时 Supabase 会把原因带回来。先把它抛出去 ——
+  // 否则用户只会看到"点了链接没反应"，没法排查。
+  const reason = params.get('error_description') ?? params.get('error')
+  if (reason) throw new Error(decodeURIComponent(reason.replace(/\+/g, ' ')))
+
+  const accessToken = params.get('access_token')
+  const refreshToken = params.get('refresh_token')
+  if (!accessToken || !refreshToken) {
+    throw new Error('回调链接里没有登录凭据，可能是链接已过期或已经用过一次了')
+  }
+
+  const { error } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  })
+  if (error) throw error
+
+  sentMagicLink.value = false
+}
+
+if (isNative) {
+  CapApp.addListener('appUrlOpen', async ({ url }) => {
+    authError.value = ''
+    try {
+      await handleAuthDeepLink(url)
+    } catch (e) {
+      authError.value = (e as Error).message
+    }
+  })
+}
+
 // ---------- 魔法链接登录 ----------
 
 /** 发送魔法链接到邮箱（单人自用：邮箱即身份） */
 async function sendMagicLink(email: string) {
   sentMagicLink.value = false
+  authError.value = ''
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.origin,
+      // 从哪台设备发起就用哪边的回调地址：
+      // 手机上点链接应该跳回应用，电脑上点应该跳回网页
+      emailRedirectTo: redirectTo(),
     },
   })
   if (error) throw error
@@ -109,6 +182,7 @@ export function useAuth() {
     session: readonly(session),
     loading: readonly(loading),
     sentMagicLink: readonly(sentMagicLink),
+    authError: readonly(authError),
     sendMagicLink,
     signInWithPassword,
     signOut,

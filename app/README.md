@@ -91,19 +91,45 @@ npx @capacitor/assets generate --android    # 分发成 148 个各密度资源
 - **状态栏**：图标明暗跟着深浅主题走。只设图标风格不设背景色 ——
   Android 15+ 强制全面屏，`setBackgroundColor` 已失效，背景实际由页面透上去。
 
-### 环境要求
+### 打包
 
-- JDK 17+（本机是 21）
-- Android Studio + Android SDK（**本机未安装**，`ANDROID_HOME` 也没设）
+```bash
+npm run cap:sync                        # 先把最新的 web 产物同步进原生工程
+cd android && ./gradlew assembleDebug   # 产物：android/app/build/outputs/apk/debug/
+```
 
-也就是说：**工程能生成、能同步、图标能出，但打 APK 需要先装 Android Studio。**
-装完在 Android Studio 里直接 Run 即可。
+也可以直接在 Android Studio 里 Run（`npm run cap:android` 会帮你打开）。
+
+环境：
+- JDK 17+（本机 21）
+- Android Studio + Android SDK（本机已装，路径
+  `C:\Users\admin\AppData\Local\Android\Sdk`，正好带 `android-36` 和 `build-tools 36.1.0`）
+- `android/local.properties` 里的 `sdk.dir` —— **这个文件不进 git**（每台机器路径不同），
+  换机器要重写一次
+
+### 魔法链接登录（深链）
+
+壳里没有"页面 URL"这个概念，Supabase 邮件链接默认跳 `https://localhost` 是接不住的，
+所以改走自定义 scheme。**三处必须一致，缺一处邮件里的链接就点不开应用：**
+
+| # | 位置 | 值 |
+|---|---|---|
+| 1 | `src/lib/auth.ts` 的 `NATIVE_REDIRECT` | `com.rtarget.app://login-callback` |
+| 2 | `android/app/src/main/AndroidManifest.xml` 的 intent-filter | `scheme=com.rtarget.app`、`host=login-callback` |
+| 3 | **Supabase 后台** → Authentication → URL Configuration → Redirect URLs | `com.rtarget.app://**` |
+
+第 3 步只能在后台手动加（代码改不了你的 Supabase 项目）。
+
+完整链路：壳里请求魔法链接 → 邮件里点 → Supabase 验证 → 302 到自定义 scheme →
+系统把应用拉起来（Manifest 里 `launchMode="singleTask"`，所以是复用已有实例而不是新开）→
+Capacitor 触发 `appUrlOpen` → `auth.ts` 把 fragment 里的 token 交给 `setSession`。
+
+浏览器不受影响，仍用 `window.location.origin` —— 所以**手机上点跳应用、电脑上点跳网页**。
+
+> ⚠️ 改完 Manifest 要重新 `cap:sync` + 重新打包才生效。
 
 ### 已知待办
 
-- **魔法链接登录在壳里用不了** —— `emailRedirectTo` 用的是 `window.location.origin`，
-  在壳里会变成 `https://localhost`。要走深链（自定义 scheme + intent-filter）才能支持。
-  目前请用「密码登录」那一栏。
 - **启动图标可能偏小**：Android 12+ 的 `windowSplashScreenAnimatedIcon` 直接用了
   自适应图标的前景层（自带 108dp 的内边距），实际显示会比理想值小一圈。
   装上真机看一眼，要调就换一张专门的启动图标 drawable。

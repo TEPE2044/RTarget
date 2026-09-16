@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons-vue'
 import { useAuth } from '../lib/auth'
 
-const { sendMagicLink, sentMagicLink, signInWithPassword, loading } = useAuth()
+const { sendMagicLink, sentMagicLink, signInWithPassword, loading, authError } = useAuth()
 const email = ref('')
 const password = ref('')
 const sending = ref(false)
@@ -68,8 +68,9 @@ async function submit() {
       </a-form>
 
       <a-alert v-if="sentMagicLink && mode === 'magic'" type="success" show-icon class="mt-4"
-        message="链接已发送" description="收件箱点一下即可进入。没收到请查垃圾邮件。" />
-      <a-alert v-if="error" type="error" show-icon class="mt-4" :message="error" />
+        message="链接已发送"
+        description="收件箱点一下即可进入。手机上点会直接跳回本应用；没收到请查垃圾邮件。" />
+      <a-alert v-if="error || authError" type="error" show-icon class="mt-4" :message="error || authError" />
     </a-card>
   </div>
 </template>
