@@ -32,6 +32,23 @@ export interface GameNode {
   compound_c_done: boolean | null
   /** 奖励 B 来自愿望单时有值；手输的奖励为 null（0015） */
   wish_id: string | null
+  /** 目标 A 来自目标单时有值；手输的目标为 null（0016） */
+  todo_id: string | null
+}
+
+// ---------- 目标单 ----------
+
+export type TodoStatus = 'open' | 'taken' | 'done'
+
+export interface Todo {
+  id: string
+  user_id: string
+  content: string
+  /** open 待办 / taken 已立项（移出清单）/ done 直接勾掉 */
+  status: TodoStatus
+  done_at: string | null
+  taken_at: string | null
+  created_at: string
 }
 
 // ---------- 愿望单 ----------
@@ -141,8 +158,9 @@ export async function getArchives(): Promise<Archive[]> {
  * - 档位继承：B/C 无独立档位，分值 = A 的档位分值（ALL IN 同样继承快照）
  * - 死线各自独立：A 用 dueAt；C 用 penaltyDueAt，且**只能落在 A 之后的 1~3 天**
  *   （需求；这段就是惩罚复合体的补做窗口）；B 无时限，due_at 沿用 A 的仅作展示
- * - 奖励 B 可以来自愿望单（wishId），也可以是临时手输（wishId 留空）。
- *   content 始终写当时的文案快照 —— 愿望以后改了名，不影响已经立过的目标
+ * - 奖励 B 可以来自愿望单（reward.wishId），也可以是临时手输。
+ *   目标 A 可以来自目标单（todoId），同样可以临时手输。
+ *   content 始终写当时的文案快照 —— 清单里以后改了名，不影响已经立过的目标
  */
 export async function createGoal(input: {
   archiveId: string
@@ -153,6 +171,8 @@ export async function createGoal(input: {
   reward: { content: string; wishId?: string | null }
   penalty: { content: string }
   vitality: number
+  /** 目标 A 的来源；从目标单选的时候填，手输留空 */
+  todoId?: string | null
 }): Promise<string> {
   const user = await requireUser()
   // 活力值四舍五入取整（文档 v1.0：不要小数点）
@@ -173,6 +193,7 @@ export async function createGoal(input: {
       user_id: user.id,
       kind: 'A',
       content: input.content,
+      todo_id: input.todoId ?? null,
       tier: input.tier,
       stake,
       due_at: input.dueAt,
@@ -215,6 +236,22 @@ export async function createGoal(input: {
     await supabase.from('nodes').delete().eq('id', (aNode as GameNode).id)
     throw childErr
   }
+
+  // 立项成功 → 把目标单里那条移出清单（taken）。
+  // 放在最后做：万一上面写节点失败了，就别去动人家的清单。
+  // 同样是附加效果，失败不阻塞（清单里多留一条，比目标没立成好）。
+  if (input.todoId) {
+    try {
+      await supabase
+        .from('todos')
+        .update({ status: 'taken', taken_at: new Date().toISOString() })
+        .eq('id', input.todoId)
+        .eq('status', 'open') // 幂等：只有还在待办里的才移出
+    } catch {
+      /* 忽略 */
+    }
+  }
+
   return (aNode as GameNode).id
 }
 
@@ -473,5 +510,68 @@ export async function reopenWish(id: string) {
     .from('wishes')
     .update({ status: 'open', done_at: null, done_archive_id: null })
     .eq('id', id)
+  if (error) throw error
+}
+
+// ---------- 目标单 ----------
+
+/**
+ * 全部待办。taken（已立项）的**不返回** —— 它已经从清单里移出了，
+ * 事情在「执行」页里继续。想看它去了哪，反查 nodes.todo_id。
+ */
+export async function getTodos(): Promise<Todo[]> {
+  const { data, error } = await supabase
+    .from('todos')
+    .select('*')
+    .neq('status', 'taken')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data as Todo[]
+}
+
+export async function createTodo(content: string): Promise<Todo> {
+  const user = await requireUser()
+  const { data, error } = await supabase
+    .from('todos')
+    .insert({ user_id: user.id, content: content.trim() })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Todo
+}
+
+export async function updateTodo(id: string, content: string) {
+  await requireUser()
+  const { error } = await supabase
+    .from('todos')
+    .update({ content: content.trim() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteTodo(id: string) {
+  await requireUser()
+  const { error } = await supabase.from('todos').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** 直接勾掉：不押注、不加不减分（这正是"普通 TODOLIST"那部分） */
+export async function setTodoDone(id: string) {
+  const { error } = await supabase
+    .from('todos')
+    .update({ status: 'done', done_at: new Date().toISOString() })
+    .eq('id', id)
+    .neq('status', 'taken') // 已立项的不能被反向勾掉；同时保证幂等
+  if (error) throw error
+}
+
+/** 把勾掉的放回待办 */
+export async function reopenTodo(id: string) {
+  await requireUser()
+  const { error } = await supabase
+    .from('todos')
+    .update({ status: 'open', done_at: null })
+    .eq('id', id)
+    .neq('status', 'taken')
   if (error) throw error
 }

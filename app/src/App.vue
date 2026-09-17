@@ -7,12 +7,13 @@ import { useTheme } from './lib/theme'
 import {
   settleAll, getVitality, getLedger, getArchives, getAllNodes,
   createArchive, createGoal, sealArchive, deleteArchive, hasPending, inCompound,
-  getArchiveLedgerSums, findSealPenalty, getWishes, createWish,
+  getArchiveLedgerSums, findSealPenalty, getWishes, createWish, getTodos,
 } from './lib/game'
-import type { Archive, GameNode, LedgerEntry, Tier, Wish } from './lib/game'
+import type { Archive, GameNode, LedgerEntry, Tier, Wish, Todo } from './lib/game'
 import LoginCard from './components/LoginCard.vue'
 import NodeList from './components/NodeList.vue'
 import WishList from './components/WishList.vue'
+import TodosList from './components/TodosList.vue'
 
 const { session, loading, signOut, forceSignOut, passwordPending, setPassword } = useAuth()
 const { theme, toggleTheme } = useTheme()
@@ -31,11 +32,12 @@ const ledger = ref<LedgerEntry[]>([])
 const archives = ref<Archive[]>([])
 const allNodes = ref<GameNode[]>([])
 const wishes = ref<Wish[]>([])
+const todos = ref<Todo[]>([])
 const sealSums = ref<Record<string, number>>({})
 const busy = ref(false)
 const now = ref(new Date())
 
-type PageKey = 'home' | 'running' | 'wish' | 'history'
+type PageKey = 'home' | 'running' | 'todo' | 'wish' | 'history'
 const page = ref<PageKey>('home')
 const activeArchiveId = ref<string | null>(null)
 /** 历史记录页当前查看的存档（可以是已封档的） */
@@ -47,6 +49,8 @@ const openArchives = computed(() => archives.value.filter((a) => a.status === 'o
 const sealedArchives = computed(() => archives.value.filter((a) => a.status === 'sealed'))
 /** 还没实现的愿望 —— 设目标时可选的奖励 */
 const openWishes = computed(() => wishes.value.filter((w) => w.status === 'open'))
+/** 还没做的待办 —— 设目标时可选的题材 */
+const openTodos = computed(() => todos.value.filter((t) => t.status === 'open'))
 const activeArchive = computed(
   () => archives.value.find((a) => a.id === activeArchiveId.value) ?? null
 )
@@ -85,10 +89,11 @@ const stats = computed(() => ({
   lost: ledger.value.filter((l) => l.amount < 0).reduce((s, l) => s + Number(l.amount), 0),
 }))
 
-/** 底部导航：手机上要短，长词放不下 */
+/** 底部导航：手机上要短，长词放不下。5 个 tab 在 390px 下每格还有 78px */
 const pages = computed(() => [
   { key: 'home' as PageKey, label: '首页', badge: 0 },
   { key: 'running' as PageKey, label: '执行', badge: pendingGroups.value.length },
+  { key: 'todo' as PageKey, label: '待办', badge: 0 },
   { key: 'wish' as PageKey, label: '愿望', badge: 0 },
   { key: 'history' as PageKey, label: '历史', badge: 0 },
 ])
@@ -129,9 +134,9 @@ async function refresh() {
   busy.value = true
   try {
     await settleAll() // 惰性结算：把到点的账先结掉
-    const [v, l, as, ns, sums, ws] = await Promise.all([
+    const [v, l, as, ns, sums, ws, ts] = await Promise.all([
       getVitality(), getLedger(100), getArchives(), getAllNodes(), getArchiveLedgerSums(),
-      getWishes(),
+      getWishes(), getTodos(),
     ])
     vitality.value = v
     ledger.value = l
@@ -139,6 +144,7 @@ async function refresh() {
     allNodes.value = ns
     sealSums.value = sums
     wishes.value = ws
+    todos.value = ts
 
     if (!activeArchiveId.value || !as.some((a) => a.id === activeArchiveId.value)) {
       activeArchiveId.value = as.find((a) => a.status === 'open')?.id ?? null
@@ -185,6 +191,7 @@ watch(session, (s) => {
     archives.value = []
     allNodes.value = []
     wishes.value = []
+    todos.value = []
     activeArchiveId.value = null
     historyArchiveId.value = null
   }
@@ -322,12 +329,36 @@ const goalForm = ref({
   tier: 'low' as Tier,
   dueDate: minDueDate,
   penaltyOffset: 3 as PenaltyOffset,
+  /** 挑中的待办 id（目标来源 = 目标单时用） */
+  todoId: '',
   /** 挑中的愿望 id（奖励来源 = 愿望单时用） */
   rewardWishId: '',
   /** 自己写的奖励文案（奖励来源 = 手输时用） */
   rewardContent: '',
   penalty: { content: '' },
 })
+
+/** 目标 A 从哪来：目标单里挑一条 / 临时自己写 */
+type GoalSource = 'todo' | 'free'
+const goalSource = ref<GoalSource>('free')
+
+const canPickTodo = computed(() => openTodos.value.length > 0)
+watch(canPickTodo, (ok) => {
+  if (!ok) goalSource.value = 'free'
+}, { immediate: true })
+
+const todoOptions = computed(() =>
+  openTodos.value.map((t) => ({ value: t.id, label: t.content }))
+)
+const selectedTodo = computed(
+  () => openTodos.value.find((t) => t.id === goalForm.value.todoId) ?? null
+)
+/** 最终写进 A 的文案（A 存的也是当时的快照） */
+const goalText = computed(() =>
+  goalSource.value === 'todo'
+    ? (selectedTodo.value?.content ?? '')
+    : goalForm.value.content.trim()
+)
 
 /** 奖励 B 从哪来：愿望单里挑一个 / 临时自己写 */
 type RewardSource = 'wish' | 'free'
@@ -373,7 +404,11 @@ const highTiersDisabled = computed(() => vitality.value < 0)
 
 async function addGoal() {
   if (!activeArchiveId.value) return message.warning('先选一个存档')
-  if (!goalForm.value.content.trim()) return message.warning('目标内容必填')
+  if (!goalText.value) {
+    return message.warning(
+      goalSource.value === 'todo' ? '挑一条待办当目标' : '目标内容必填'
+    )
+  }
   if (!rewardText.value) {
     return message.warning(
       rewardSource.value === 'wish' ? '挑一个愿望当奖励' : '奖励 B 必填（想做的事）'
@@ -386,8 +421,8 @@ async function addGoal() {
 
   busy.value = true
   try {
-    // 从愿望单挑 → 直接挂上那个愿望；
-    // 自己写又勾了「同时存进愿望单」→ 先建一条愿望，再挂到目标上
+    // 从清单挑 → 直接挂上那一条；
+    // 自己写又勾了「顺手存进…」→ 先建一条，再挂到目标上
     let wishId: string | null = null
     if (rewardSource.value === 'wish') {
       wishId = goalForm.value.rewardWishId || null
@@ -397,19 +432,21 @@ async function addGoal() {
 
     await createGoal({
       archiveId: activeArchiveId.value,
-      content: goalForm.value.content.trim(),
+      content: goalText.value,
       tier: goalForm.value.tier,
       dueAt: dueInstant(goalForm.value.dueDate),
       penaltyDueAt: dueInstant(penaltyDate.value),
       reward: { content: rewardText.value, wishId },
       penalty: { content: goalForm.value.penalty.content.trim() },
       vitality: vitality.value,
+      // 立项成功的话，createGoal 会把这条待办移出清单（taken）
+      todoId: goalSource.value === 'todo' ? goalForm.value.todoId || null : null,
     })
     message.success('已押注设立，到点未申报即判负')
     showGoalForm.value = false
     goalForm.value = {
       content: '', tier: 'low', dueDate: minDueDate, penaltyOffset: 3,
-      rewardWishId: '', rewardContent: '',
+      todoId: '', rewardWishId: '', rewardContent: '',
       penalty: { content: '' },
     }
     saveToWishlist.value = false
@@ -591,6 +628,11 @@ function archiveGoalCount(id: string): number {
           <NodeList v-else class="rt-gap12" :nodes="nodes" :busy="busy" variant="open" @refresh="refresh" />
         </section>
 
+        <!-- ==================== 目标单（普通待办） ==================== -->
+        <section v-else-if="page === 'todo'">
+          <TodosList :todos="todos" :busy="busy" @refresh="refresh" />
+        </section>
+
         <!-- ==================== 愿望单 ==================== -->
         <section v-else-if="page === 'wish'">
           <WishList :wishes="wishes" :busy="busy" @refresh="refresh" />
@@ -683,6 +725,11 @@ function archiveGoalCount(id: string): number {
                 <circle cx="12" cy="12" r="8.3" />
                 <circle cx="12" cy="12" r="3.4" />
               </svg>
+              <svg v-else-if="p.key === 'todo'" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <path d="M4.4 6.6h2.4M4.4 12h2.4M4.4 17.4h2.4" />
+                <path d="M10.6 6.6h9M10.6 12h9M10.6 17.4h9" />
+              </svg>
               <svg v-else-if="p.key === 'wish'" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
                 fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z" />
@@ -764,8 +811,28 @@ function archiveGoalCount(id: string): number {
         wrap-class-name="rt-sheet">
         <a-form layout="vertical">
           <a-form-item label="目标 A（押注）· 这件事是什么">
-            <a-input v-model:value="goalForm.content" placeholder="比如：做完 660 题第三章" />
+            <!-- 目标单非空时才给「挑 / 自己写」这个切换，否则直接手输 -->
+            <div v-if="canPickTodo" class="rt-seg" style="margin-bottom: 10px">
+              <button type="button" class="rt-segbtn" :class="{ active: goalSource === 'todo' }"
+                @click="goalSource = 'todo'">
+                <span>从目标单选</span>
+                <span class="rt-meta">{{ openTodos.length }} 条待办</span>
+              </button>
+              <button type="button" class="rt-segbtn" :class="{ active: goalSource === 'free' }"
+                @click="goalSource = 'free'">
+                <span>自己写</span>
+                <span class="rt-meta">临时起意</span>
+              </button>
+            </div>
+
+            <a-select v-if="goalSource === 'todo'" v-model:value="goalForm.todoId"
+              :options="todoOptions" placeholder="挑一条待办" style="width: 100%" />
+            <a-input v-else v-model:value="goalForm.content"
+              placeholder="比如：做完 660 题第三章" />
           </a-form-item>
+          <p v-if="goalSource === 'todo' && selectedTodo" class="rt-meta" style="margin: -14px 0 12px">
+            立项后这条会从目标单移出，事情就进「执行」页了。
+          </p>
 
           <div class="rt-form-row">
             <a-form-item label="档位" style="flex: 1">

@@ -3,11 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 import NodeList from '../components/NodeList.vue'
 import LoginCard from '../components/LoginCard.vue'
 import WishList from '../components/WishList.vue'
-import type { GameNode, Wish } from '../lib/game'
+import TodosList from '../components/TodosList.vue'
+import type { GameNode, Wish, Todo } from '../lib/game'
 
 // dev-only 排版预览：真实组件 + 假数据，不连库。
 // 打开 http://localhost:5173/preview.html 看，构建时不会被打包。
-// tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 愿望 / 3 历史 / 4 表单
+// tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 待办 / 3 愿望 / 4 历史 / 5 表单
 // 另外支持 ?theme=light|dark、?sheet=1（设目标抽屉）、?more=1、?debug=1。
 // ?auth=login|code-email|code-verify|code-password 直接看登录那几步。
 
@@ -22,7 +23,7 @@ const base: GameNode = {
   id: '', archive_id: 'a1', user_id: 'u1', kind: 'A', parent_id: null,
   content: '', tier: 'low', stake: 5, due_at: at(1), status: 'active',
   created_at: new Date().toISOString(), completed_at: null,
-  compound_a_done: null, compound_c_done: null, wish_id: null,
+  compound_a_done: null, compound_c_done: null, wish_id: null, todo_id: null,
 }
 const mk = (o: Partial<GameNode>): GameNode => ({ ...base, ...o })
 
@@ -107,8 +108,17 @@ const wishes: Wish[] = [
   { id: 'w6', user_id: 'u1', content: '买个新键帽', status: 'done', done_at: at(-8), done_archive_id: 'a4', created_at: at(-30) },
 ]
 
-// tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 愿望 / 3 历史 / 4 设目标表单
-const tabs = ['首页', '执行', '愿望', '历史', '表单']
+const todos: Todo[] = [
+  { id: 't1', user_id: 'u1', content: '把书桌彻底收拾一遍', status: 'open', done_at: null, taken_at: null, created_at: at(-7) },
+  { id: 't2', user_id: 'u1', content: '跑三次 5 公里', status: 'open', done_at: null, taken_at: null, created_at: at(-5) },
+  { id: 't3', user_id: 'u1', content: '把简历模板重写一遍', status: 'open', done_at: null, taken_at: null, created_at: at(-3) },
+  { id: 't4', user_id: 'u1', content: '给爸妈打个电话', status: 'open', done_at: null, taken_at: null, created_at: at(-2) },
+  { id: 't5', user_id: 'u1', content: '整理作品集文件夹', status: 'done', done_at: at(-1), taken_at: null, created_at: at(-9) },
+  { id: 't6', user_id: 'u1', content: '退掉不用的订阅', status: 'done', done_at: at(-4), taken_at: null, created_at: at(-12) },
+]
+
+// tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 待办 / 3 愿望 / 4 历史 / 5 设目标表单
+const tabs = ['首页', '执行', '待办', '愿望', '历史', '表单']
 const q = new URLSearchParams(location.search)
 const tab = ref(Number(q.get('tab') ?? 0))
 const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light')
@@ -117,16 +127,20 @@ const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light'
 type AuthStep = 'login' | 'code-email' | 'code-verify' | 'code-password'
 const authMode = ref<AuthStep | null>((q.get('auth') as AuthStep | null) ?? null)
 
-// ---- 设目标表单的预览状态（C 死线 = A 之后 1~3 天；奖励 B 可挑愿望或自己写）----
+// ---- 设目标表单的预览状态（C 死线 = A 之后 1~3 天；A/B 都能从清单挑或自己写）----
 const pDue = ref('2026-08-01')
 const pOffset = ref(3)
+/** 目标来源：?goal=free 切到「自己写」，默认演示"从目标单选" */
+const pGoalSource = ref<'todo' | 'free'>(q.get('goal') === 'free' ? 'free' : 'todo')
+const pTodoId = ref('t1')
+const pGoalText = ref('')
 /** 奖励来源：?reward=free 切到「自己写」，默认演示"从愿望单选" */
 const pRewardSource = ref<'wish' | 'free'>(q.get('reward') === 'free' ? 'free' : 'wish')
 const pWishId = ref('w1')
 const pRewardText = ref('')
 const pSaveToWishlist = ref(true)
 /** 底部抽屉：?sheet=1 或切到「表单」页签时自动打开 */
-const showSheet = ref(tab.value === 4 || q.get('sheet') === '1')
+const showSheet = ref(tab.value === 5 || q.get('sheet') === '1')
 /** 顶栏「更多」抽屉：?more=1 可直接截图 */
 const showMore = ref(q.get('more') === '1')
 
@@ -299,13 +313,18 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
         </div>
       </template>
 
-      <!-- 愿望单（tab=2）· 走真实组件 -->
+      <!-- 待办（tab=2）· 走真实组件 -->
       <template v-else-if="tab === 2">
+        <TodosList :todos="todos" />
+      </template>
+
+      <!-- 愿望单（tab=3）· 走真实组件 -->
+      <template v-else-if="tab === 3">
         <WishList :wishes="wishes" />
       </template>
 
-      <!-- 历史（tab=3） -->
-      <template v-else-if="tab === 3">
+      <!-- 历史（tab=4） -->
+      <template v-else-if="tab === 4">
         <div class="rt-line1">
           <span class="rt-sec">封档记录</span>
           <span class="rt-meta rt-push">2 个存档</span>
@@ -383,10 +402,15 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
               <circle cx="12" cy="12" r="8.3" /><circle cx="12" cy="12" r="3.4" />
             </svg>
             <svg v-else-if="i === 2" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <path d="M4.4 6.6h2.4M4.4 12h2.4M4.4 17.4h2.4" />
+              <path d="M10.6 6.6h9M10.6 12h9M10.6 17.4h9" />
+            </svg>
+            <svg v-else-if="i === 3" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z" />
             </svg>
-            <svg v-else-if="i === 3" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+            <svg v-else-if="i === 4" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="8.3" /><path d="M12 7.4V12l3.2 1.9" />
             </svg>
@@ -427,8 +451,27 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
       wrap-class-name="rt-sheet">
       <a-form layout="vertical">
         <a-form-item label="目标 A（押注）· 这件事是什么">
-          <a-input placeholder="比如：做完 660 题第三章" />
+          <div class="rt-seg" style="margin-bottom: 10px">
+            <button type="button" class="rt-segbtn" :class="{ active: pGoalSource === 'todo' }"
+              @click="pGoalSource = 'todo'">
+              <span>从目标单选</span>
+              <span class="rt-meta">4 条待办</span>
+            </button>
+            <button type="button" class="rt-segbtn" :class="{ active: pGoalSource === 'free' }"
+              @click="pGoalSource = 'free'">
+              <span>自己写</span>
+              <span class="rt-meta">临时起意</span>
+            </button>
+          </div>
+
+          <a-select v-if="pGoalSource === 'todo'" v-model:value="pTodoId"
+            :options="todos.filter((t) => t.status === 'open').map((t) => ({ value: t.id, label: t.content }))"
+            style="width: 100%" />
+          <a-input v-else v-model:value="pGoalText" placeholder="比如：做完 660 题第三章" />
         </a-form-item>
+        <p v-if="pGoalSource === 'todo'" class="rt-meta" style="margin: -14px 0 12px">
+          立项后这条会从目标单移出，事情就进「执行」页了。
+        </p>
 
         <div class="rt-form-row">
           <a-form-item label="档位" style="flex: 1">
