@@ -195,11 +195,26 @@ document.documentElement.style.setProperty('--safe-area-inset-top', '24px')  // 
 
 ### 打包
 
+**一条命令出包**：
+
 ```bash
-npm run cap:sync                        # 先把最新的 web 产物同步进原生工程
-cd android && ./gradlew assembleDebug
+npm run apk
 # 产物：android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+它等于 `cap:sync` + `gradlew assembleDebug`，也就是「同步 + 真正出包」。
+
+拆开看是这两步（哪一步在干什么，别搞混）：
+
+```bash
+npm run cap:sync                        # ① 构建前端 + 把 dist 拷进 android/.../assets/public
+cd android && ./gradlew assembleDebug   # ② 打 APK ← 只有这一步会生成/刷新 apk 文件
+```
+
+> ⚠️ **`cap:sync` 不出包**，它只更新原生工程里的 web 产物。
+> 所以跑完 `cap:sync` 看到 `app-debug.apk` 的时间没变是正常的 —— 少跑第 ② 步。
+> 如果第 ② 步也跑了但 apk 时间还是没变，那说明前端产物没变化
+> （文件名 `index-<hash>.js` 一样），也就是没改到东西。
 
 也可以直接在 Android Studio 里 Run（`npm run cap:android` 会帮你打开）。
 
