@@ -7,11 +7,12 @@ import { useTheme } from './lib/theme'
 import {
   settleAll, getVitality, getLedger, getArchives, getAllNodes,
   createArchive, createGoal, sealArchive, deleteArchive, hasPending, inCompound,
-  getArchiveLedgerSums, findSealPenalty,
+  getArchiveLedgerSums, findSealPenalty, getWishes, createWish,
 } from './lib/game'
-import type { Archive, GameNode, LedgerEntry, Tier } from './lib/game'
+import type { Archive, GameNode, LedgerEntry, Tier, Wish } from './lib/game'
 import LoginCard from './components/LoginCard.vue'
 import NodeList from './components/NodeList.vue'
+import WishList from './components/WishList.vue'
 
 const { session, loading, signOut, forceSignOut, passwordPending, setPassword } = useAuth()
 const { theme, toggleTheme } = useTheme()
@@ -29,11 +30,12 @@ const vitality = ref(0)
 const ledger = ref<LedgerEntry[]>([])
 const archives = ref<Archive[]>([])
 const allNodes = ref<GameNode[]>([])
+const wishes = ref<Wish[]>([])
 const sealSums = ref<Record<string, number>>({})
 const busy = ref(false)
 const now = ref(new Date())
 
-type PageKey = 'home' | 'running' | 'history'
+type PageKey = 'home' | 'running' | 'wish' | 'history'
 const page = ref<PageKey>('home')
 const activeArchiveId = ref<string | null>(null)
 /** 历史记录页当前查看的存档（可以是已封档的） */
@@ -43,6 +45,8 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 const openArchives = computed(() => archives.value.filter((a) => a.status === 'open'))
 const sealedArchives = computed(() => archives.value.filter((a) => a.status === 'sealed'))
+/** 还没实现的愿望 —— 设目标时可选的奖励 */
+const openWishes = computed(() => wishes.value.filter((w) => w.status === 'open'))
 const activeArchive = computed(
   () => archives.value.find((a) => a.id === activeArchiveId.value) ?? null
 )
@@ -85,6 +89,7 @@ const stats = computed(() => ({
 const pages = computed(() => [
   { key: 'home' as PageKey, label: '首页', badge: 0 },
   { key: 'running' as PageKey, label: '执行', badge: pendingGroups.value.length },
+  { key: 'wish' as PageKey, label: '愿望', badge: 0 },
   { key: 'history' as PageKey, label: '历史', badge: 0 },
 ])
 
@@ -124,14 +129,16 @@ async function refresh() {
   busy.value = true
   try {
     await settleAll() // 惰性结算：把到点的账先结掉
-    const [v, l, as, ns, sums] = await Promise.all([
+    const [v, l, as, ns, sums, ws] = await Promise.all([
       getVitality(), getLedger(100), getArchives(), getAllNodes(), getArchiveLedgerSums(),
+      getWishes(),
     ])
     vitality.value = v
     ledger.value = l
     archives.value = as
     allNodes.value = ns
     sealSums.value = sums
+    wishes.value = ws
 
     if (!activeArchiveId.value || !as.some((a) => a.id === activeArchiveId.value)) {
       activeArchiveId.value = as.find((a) => a.status === 'open')?.id ?? null
@@ -177,6 +184,7 @@ watch(session, (s) => {
     ledger.value = []
     archives.value = []
     allNodes.value = []
+    wishes.value = []
     activeArchiveId.value = null
     historyArchiveId.value = null
   }
@@ -314,9 +322,37 @@ const goalForm = ref({
   tier: 'low' as Tier,
   dueDate: minDueDate,
   penaltyOffset: 3 as PenaltyOffset,
-  reward: { content: '' },
+  /** 挑中的愿望 id（奖励来源 = 愿望单时用） */
+  rewardWishId: '',
+  /** 自己写的奖励文案（奖励来源 = 手输时用） */
+  rewardContent: '',
   penalty: { content: '' },
 })
+
+/** 奖励 B 从哪来：愿望单里挑一个 / 临时自己写 */
+type RewardSource = 'wish' | 'free'
+const rewardSource = ref<RewardSource>('free')
+/** 自己写的时候，顺便存进愿望单 */
+const saveToWishlist = ref(false)
+
+const canPickWish = computed(() => openWishes.value.length > 0)
+/** 愿望都实现完（或一条都没有）时没有"挑"这个选项，自动退回手输 */
+watch(canPickWish, (ok) => {
+  if (!ok) rewardSource.value = 'free'
+}, { immediate: true })
+
+const wishOptions = computed(() =>
+  openWishes.value.map((w) => ({ value: w.id, label: w.content }))
+)
+const selectedWish = computed(
+  () => openWishes.value.find((w) => w.id === goalForm.value.rewardWishId) ?? null
+)
+/** 最终写进 B 的文案（B 存的是快照，愿望以后改了名不影响已立的目标） */
+const rewardText = computed(() =>
+  rewardSource.value === 'wish'
+    ? (selectedWish.value?.content ?? '')
+    : goalForm.value.rewardContent.trim()
+)
 
 function shortDate(dateStr: string): string {
   const [, m, d] = dateStr.split('-').map(Number)
@@ -338,7 +374,11 @@ const highTiersDisabled = computed(() => vitality.value < 0)
 async function addGoal() {
   if (!activeArchiveId.value) return message.warning('先选一个存档')
   if (!goalForm.value.content.trim()) return message.warning('目标内容必填')
-  if (!goalForm.value.reward.content.trim()) return message.warning('奖励 B 必填（想做的事）')
+  if (!rewardText.value) {
+    return message.warning(
+      rewardSource.value === 'wish' ? '挑一个愿望当奖励' : '奖励 B 必填（想做的事）'
+    )
+  }
   if (!goalForm.value.penalty.content.trim()) return message.warning('惩罚 C 必填（一直拖延的事）')
   if (highTiersDisabled.value && (goalForm.value.tier === 'high' || goalForm.value.tier === 'allin')) {
     return message.warning('活力值为负，高档与 ALL IN 暂不可押')
@@ -346,13 +386,22 @@ async function addGoal() {
 
   busy.value = true
   try {
+    // 从愿望单挑 → 直接挂上那个愿望；
+    // 自己写又勾了「同时存进愿望单」→ 先建一条愿望，再挂到目标上
+    let wishId: string | null = null
+    if (rewardSource.value === 'wish') {
+      wishId = goalForm.value.rewardWishId || null
+    } else if (saveToWishlist.value) {
+      wishId = (await createWish(rewardText.value)).id
+    }
+
     await createGoal({
       archiveId: activeArchiveId.value,
       content: goalForm.value.content.trim(),
       tier: goalForm.value.tier,
       dueAt: dueInstant(goalForm.value.dueDate),
       penaltyDueAt: dueInstant(penaltyDate.value),
-      reward: { content: goalForm.value.reward.content.trim() },
+      reward: { content: rewardText.value, wishId },
       penalty: { content: goalForm.value.penalty.content.trim() },
       vitality: vitality.value,
     })
@@ -360,9 +409,10 @@ async function addGoal() {
     showGoalForm.value = false
     goalForm.value = {
       content: '', tier: 'low', dueDate: minDueDate, penaltyOffset: 3,
-      reward: { content: '' },
+      rewardWishId: '', rewardContent: '',
       penalty: { content: '' },
     }
+    saveToWishlist.value = false
     await refresh()
   } catch (e) {
     await reportError(e)
@@ -541,6 +591,11 @@ function archiveGoalCount(id: string): number {
           <NodeList v-else class="rt-gap12" :nodes="nodes" :busy="busy" variant="open" @refresh="refresh" />
         </section>
 
+        <!-- ==================== 愿望单 ==================== -->
+        <section v-else-if="page === 'wish'">
+          <WishList :wishes="wishes" :busy="busy" @refresh="refresh" />
+        </section>
+
         <!-- ==================== 历史记录 ==================== -->
         <section v-else>
           <div class="rt-line1">
@@ -627,6 +682,10 @@ function archiveGoalCount(id: string): number {
                 fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
                 <circle cx="12" cy="12" r="8.3" />
                 <circle cx="12" cy="12" r="3.4" />
+              </svg>
+              <svg v-else-if="p.key === 'wish'" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z" />
               </svg>
               <svg v-else class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
                 fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -728,9 +787,35 @@ function archiveGoalCount(id: string): number {
           </p>
 
           <a-form-item label="奖励 B（想做的事 · 档位继承 A）">
-            <a-input v-model:value="goalForm.reward.content"
-              placeholder="做成 A 后想做的事（无时限，达成即加分）" />
+            <!-- 愿望单非空时才给「挑 / 自己写」这个切换，否则直接手输 -->
+            <div v-if="canPickWish" class="rt-seg" style="margin-bottom: 10px">
+              <button type="button" class="rt-segbtn" :class="{ active: rewardSource === 'wish' }"
+                @click="rewardSource = 'wish'">
+                <span>从愿望单选</span>
+                <span class="rt-meta">{{ openWishes.length }} 个待实现</span>
+              </button>
+              <button type="button" class="rt-segbtn" :class="{ active: rewardSource === 'free' }"
+                @click="rewardSource = 'free'">
+                <span>自己写</span>
+                <span class="rt-meta">临时起意</span>
+              </button>
+            </div>
+
+            <a-select v-if="rewardSource === 'wish'" v-model:value="goalForm.rewardWishId"
+              :options="wishOptions" placeholder="挑一个愿望" style="width: 100%" />
+
+            <template v-else>
+              <a-input v-model:value="goalForm.rewardContent"
+                placeholder="做成 A 后想做的事（无时限，达成即加分）" />
+              <a-checkbox v-if="goalForm.rewardContent.trim()" v-model:checked="saveToWishlist"
+                style="margin-top: 8px">
+                顺手存进愿望单
+              </a-checkbox>
+            </template>
           </a-form-item>
+          <p v-if="rewardSource === 'wish' && selectedWish" class="rt-meta" style="margin: -12px 0 16px">
+            A 达成的那一刻这个愿望就算兑现，会自动从待实现里划掉。
+          </p>
 
           <a-form-item label="惩罚 C（一直拖延的事 · 档位继承 A）">
             <a-input v-model:value="goalForm.penalty.content" placeholder="如果没做成，被强制面对的事" />

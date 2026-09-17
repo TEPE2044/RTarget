@@ -2,12 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import NodeList from '../components/NodeList.vue'
 import LoginCard from '../components/LoginCard.vue'
-import type { GameNode } from '../lib/game'
+import WishList from '../components/WishList.vue'
+import type { GameNode, Wish } from '../lib/game'
 
 // dev-only 排版预览：真实组件 + 假数据，不连库。
 // 打开 http://localhost:5173/preview.html 看，构建时不会被打包。
-// 支持 ?tab=0|1|2|3 与 ?theme=light|dark，方便无头截图逐个页面出图。
-// ?auth=email|verify|password 直接看登录/注册那三步（走 LoginCard 的 devPreview）。
+// tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 愿望 / 3 历史 / 4 表单
+// 另外支持 ?theme=light|dark、?sheet=1（设目标抽屉）、?more=1、?debug=1。
+// ?auth=login|code-email|code-verify|code-password 直接看登录那几步。
 
 const DAY = 86_400_000
 const at = (offsetDays: number) => {
@@ -20,7 +22,7 @@ const base: GameNode = {
   id: '', archive_id: 'a1', user_id: 'u1', kind: 'A', parent_id: null,
   content: '', tier: 'low', stake: 5, due_at: at(1), status: 'active',
   created_at: new Date().toISOString(), completed_at: null,
-  compound_a_done: null, compound_c_done: null,
+  compound_a_done: null, compound_c_done: null, wish_id: null,
 }
 const mk = (o: Partial<GameNode>): GameNode => ({ ...base, ...o })
 
@@ -96,8 +98,17 @@ const sealed = [
   { id: 's2', name: '减肥第一季', at: '2026/7/12 09:02', goals: 4, free: true, penalty: 0, net: -8 },
 ]
 
-// tab：0 执行 / 1 首页 / 2 历史 / 3 设目标表单
-const tabs = ['执行', '首页', '历史', '表单']
+const wishes: Wish[] = [
+  { id: 'w1', user_id: 'u1', content: '看一集纪录片', status: 'open', done_at: null, done_archive_id: null, created_at: at(-6) },
+  { id: 'w2', user_id: 'u1', content: '买那个一直加在购物车的键盘', status: 'open', done_at: null, done_archive_id: null, created_at: at(-4) },
+  { id: 'w3', user_id: 'u1', content: '去吃一顿好的', status: 'open', done_at: null, done_archive_id: null, created_at: at(-2) },
+  { id: 'w4', user_id: 'u1', content: '睡到自然醒', status: 'open', done_at: null, done_archive_id: null, created_at: at(-1) },
+  { id: 'w5', user_id: 'u1', content: '买本《深度工作》', status: 'done', done_at: at(-5), done_archive_id: 'a5', created_at: at(-20) },
+  { id: 'w6', user_id: 'u1', content: '买个新键帽', status: 'done', done_at: at(-8), done_archive_id: 'a4', created_at: at(-30) },
+]
+
+// tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 愿望 / 3 历史 / 4 设目标表单
+const tabs = ['首页', '执行', '愿望', '历史', '表单']
 const q = new URLSearchParams(location.search)
 const tab = ref(Number(q.get('tab') ?? 0))
 const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light')
@@ -106,11 +117,16 @@ const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light'
 type AuthStep = 'login' | 'code-email' | 'code-verify' | 'code-password'
 const authMode = ref<AuthStep | null>((q.get('auth') as AuthStep | null) ?? null)
 
-// ---- 设目标表单的预览状态（C 死线 = A 之后 1~3 天）----
+// ---- 设目标表单的预览状态（C 死线 = A 之后 1~3 天；奖励 B 可挑愿望或自己写）----
 const pDue = ref('2026-08-01')
 const pOffset = ref(3)
+/** 奖励来源：?reward=free 切到「自己写」，默认演示"从愿望单选" */
+const pRewardSource = ref<'wish' | 'free'>(q.get('reward') === 'free' ? 'free' : 'wish')
+const pWishId = ref('w1')
+const pRewardText = ref('')
+const pSaveToWishlist = ref(true)
 /** 底部抽屉：?sheet=1 或切到「表单」页签时自动打开 */
-const showSheet = ref(tab.value === 3 || q.get('sheet') === '1')
+const showSheet = ref(tab.value === 4 || q.get('sheet') === '1')
 /** 顶栏「更多」抽屉：?more=1 可直接截图 */
 const showMore = ref(q.get('more') === '1')
 
@@ -199,8 +215,8 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
         <span class="rt-meta">排版预览（dev only）· 顶栏右侧按钮可切深浅色</span>
       </div>
 
-      <!-- 执行 -->
-      <template v-if="tab === 0">
+      <!-- 执行（tab=1） -->
+      <template v-if="tab === 1">
         <div class="rt-chips">
           <button v-for="(a, i) in openArchives" :key="a" class="rt-chip" :class="{ active: i === 0 }">
             <span v-if="pendingIdx.includes(i)" class="rt-dot"></span>{{ a }}
@@ -214,8 +230,8 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
         <NodeList class="rt-gap12" :nodes="openNodes" variant="open" />
       </template>
 
-      <!-- 首页 -->
-      <template v-else-if="tab === 1">
+      <!-- 首页（tab=0） -->
+      <template v-else-if="tab === 0">
         <div class="rt-card rt-vital">
           <div>
             <p class="rt-meta" style="margin: 0">活力值</p>
@@ -283,8 +299,13 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
         </div>
       </template>
 
-      <!-- 历史 -->
+      <!-- 愿望单（tab=2）· 走真实组件 -->
       <template v-else-if="tab === 2">
+        <WishList :wishes="wishes" />
+      </template>
+
+      <!-- 历史（tab=3） -->
+      <template v-else-if="tab === 3">
         <div class="rt-line1">
           <span class="rt-sec">封档记录</span>
           <span class="rt-meta rt-push">2 个存档</span>
@@ -354,25 +375,34 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
           @click="tab = i">
           <span class="rt-tab-ico">
             <svg v-if="i === 0" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
-              <circle cx="12" cy="12" r="8.3" /><circle cx="12" cy="12" r="3.4" />
-            </svg>
-            <svg v-else-if="i === 1" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3.6 10.4 12 3.8l8.4 6.6" /><path d="M5.8 9.3V20h12.4V9.3" />
             </svg>
-            <svg v-else class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+            <svg v-else-if="i === 1" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <circle cx="12" cy="12" r="8.3" /><circle cx="12" cy="12" r="3.4" />
+            </svg>
+            <svg v-else-if="i === 2" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z" />
+            </svg>
+            <svg v-else-if="i === 3" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="8.3" /><path d="M12 7.4V12l3.2 1.9" />
             </svg>
-            <span v-if="i === 0" class="rt-tab-badge">4</span>
+            <svg v-else class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4.6" y="3.8" width="14.8" height="16.4" rx="2" />
+              <path d="M8.4 8.6h7.2M8.4 12h7.2M8.4 15.4h4.4" />
+            </svg>
+            <span v-if="i === 1" class="rt-tab-badge">4</span>
           </span>
           <span>{{ t }}</span>
         </button>
       </div>
     </nav>
 
-    <div v-if="tab === 0" class="rt-fabwrap">
+    <div v-if="tab === 1" class="rt-fabwrap">
       <div class="rt-fabwrap-inner">
         <button class="rt-fab" aria-label="设一个新目标" @click="showSheet = true">
           <svg class="rt-ico" width="26" height="26" viewBox="0 0 24 24" fill="none"
@@ -412,8 +442,32 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
         </div>
 
         <a-form-item label="奖励 B（想做的事 · 档位继承 A）">
-          <a-input placeholder="做成 A 后想做的事（无时限，达成即加分）" />
+          <div class="rt-seg" style="margin-bottom: 10px">
+            <button type="button" class="rt-segbtn" :class="{ active: pRewardSource === 'wish' }"
+              @click="pRewardSource = 'wish'">
+              <span>从愿望单选</span>
+              <span class="rt-meta">4 个待实现</span>
+            </button>
+            <button type="button" class="rt-segbtn" :class="{ active: pRewardSource === 'free' }"
+              @click="pRewardSource = 'free'">
+              <span>自己写</span>
+              <span class="rt-meta">临时起意</span>
+            </button>
+          </div>
+
+          <a-select v-if="pRewardSource === 'wish'" v-model:value="pWishId"
+            :options="wishes.filter((w) => w.status === 'open').map((w) => ({ value: w.id, label: w.content }))"
+            style="width: 100%" />
+          <template v-else>
+            <a-input v-model:value="pRewardText" placeholder="做成 A 后想做的事（无时限，达成即加分）" />
+            <a-checkbox v-if="pRewardText" v-model:checked="pSaveToWishlist" style="margin-top: 8px">
+              顺手存进愿望单
+            </a-checkbox>
+          </template>
         </a-form-item>
+        <p v-if="pRewardSource === 'wish'" class="rt-meta" style="margin: -12px 0 16px">
+          A 达成的那一刻这个愿望就算兑现，会自动从待实现里划掉。
+        </p>
 
         <a-form-item label="惩罚 C（一直拖延的事 · 档位继承 A）">
           <a-input placeholder="如果没做成，被强制面对的事" />

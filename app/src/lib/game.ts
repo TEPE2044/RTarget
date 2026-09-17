@@ -30,6 +30,23 @@ export interface GameNode {
   completed_at: string | null
   compound_a_done: boolean | null
   compound_c_done: boolean | null
+  /** 奖励 B 来自愿望单时有值；手输的奖励为 null（0015） */
+  wish_id: string | null
+}
+
+// ---------- 愿望单 ----------
+
+export type WishStatus = 'open' | 'done'
+
+export interface Wish {
+  id: string
+  user_id: string
+  content: string
+  status: WishStatus
+  done_at: string | null
+  /** 在哪个存档里兑现的，仅作展示；存档删掉后会变 null */
+  done_archive_id: string | null
+  created_at: string
 }
 
 export interface LedgerEntry {
@@ -124,6 +141,8 @@ export async function getArchives(): Promise<Archive[]> {
  * - 档位继承：B/C 无独立档位，分值 = A 的档位分值（ALL IN 同样继承快照）
  * - 死线各自独立：A 用 dueAt；C 用 penaltyDueAt，且**只能落在 A 之后的 1~3 天**
  *   （需求；这段就是惩罚复合体的补做窗口）；B 无时限，due_at 沿用 A 的仅作展示
+ * - 奖励 B 可以来自愿望单（wishId），也可以是临时手输（wishId 留空）。
+ *   content 始终写当时的文案快照 —— 愿望以后改了名，不影响已经立过的目标
  */
 export async function createGoal(input: {
   archiveId: string
@@ -131,7 +150,7 @@ export async function createGoal(input: {
   tier: Tier
   dueAt: string
   penaltyDueAt: string
-  reward: { content: string }
+  reward: { content: string; wishId?: string | null }
   penalty: { content: string }
   vitality: number
 }): Promise<string> {
@@ -171,6 +190,7 @@ export async function createGoal(input: {
       kind: 'B' as NodeKind,
       parent_id: (aNode as GameNode).id,
       content: input.reward.content,
+      wish_id: input.reward.wishId ?? null,
       tier: input.tier,
       stake,
       due_at: input.dueAt, // B 无时限，仅作展示
@@ -319,6 +339,19 @@ export async function completeNode(nodeId: string) {
       amount: Math.round((bNode as GameNode).stake),
     })
     if (ledErr) throw ledErr
+
+    // 这个奖励是从愿望单里挑的话，愿望到此兑现 → 标记已实现。
+    // 附加效果：失败也不该让主流程看起来出错（分已经加过了、A 也已经完成），
+    // 所以这里吞掉异常，只是愿望会留在未实现里，用户还能手动标记。
+    const wishId = (bNode as GameNode).wish_id
+    if (wishId) {
+      try {
+        await setWishDone(wishId, n.archive_id)
+      } catch {
+        /* 忽略 */
+      }
+    }
+
     await settleAll()
     return
   }
@@ -372,4 +405,73 @@ export async function deleteArchive(archiveId: string): Promise<number> {
   const { data, error } = await supabase.rpc('delete_archive', { p_archive_id: archiveId })
   if (error) throw error
   return Number(data)
+}
+
+// ---------- 愿望单 ----------
+
+/**
+ * 全部愿望。排序交给调用方分组（未实现 / 已实现），
+ * 这里只保证同一组内新的在前。
+ */
+export async function getWishes(): Promise<Wish[]> {
+  const { data, error } = await supabase
+    .from('wishes')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data as Wish[]
+}
+
+/** 往愿望单里加一条 */
+export async function createWish(content: string): Promise<Wish> {
+  const user = await requireUser()
+  const { data, error } = await supabase
+    .from('wishes')
+    .insert({ user_id: user.id, content: content.trim() })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Wish
+}
+
+/** 改文案。已实现的也能改（只是改个说法） */
+export async function updateWish(id: string, content: string) {
+  await requireUser()
+  const { error } = await supabase
+    .from('wishes')
+    .update({ content: content.trim() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** 彻底删掉。历史里的奖励不受影响 —— B 存的是当时的内容快照 */
+export async function deleteWish(id: string) {
+  await requireUser()
+  const { error } = await supabase.from('wishes').delete().eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * 标记已实现。
+ * 两个入口共用：A 达成时自动标记（见 completeNode），以及用户手动标记
+ * （有些愿望不是靠押注系统达成的）。
+ * 带 status='open' 条件 → 幂等，重复调用不会覆盖首次的 done_at。
+ */
+export async function setWishDone(id: string, archiveId: string | null = null) {
+  const { error } = await supabase
+    .from('wishes')
+    .update({ status: 'done', done_at: new Date().toISOString(), done_archive_id: archiveId })
+    .eq('id', id)
+    .eq('status', 'open')
+  if (error) throw error
+}
+
+/** 放回愿望单（标错了 / 想再用一次） */
+export async function reopenWish(id: string) {
+  await requireUser()
+  const { error } = await supabase
+    .from('wishes')
+    .update({ status: 'open', done_at: null, done_archive_id: null })
+    .eq('id', id)
+  if (error) throw error
 }
