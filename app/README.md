@@ -271,19 +271,26 @@ npm run release     # 构建 + 打 zip + 生成 latest.json，产物都在 app/r
 
 手机上：「更多」→「检查更新」→ 有新版就自动下载并重载。
 
-### 一次性配置（只做一次）
+### 一次性配置（已完成，换项目时才需要重做）
 
 1. **建桶**：Supabase 后台 → Storage → New bucket
-   - 名字随便（下面示例用 `rtarget-releases`），**要勾 Public**
-2. **拿到公开地址**，形如：
-   `https://<你的项目>.supabase.co/storage/v1/object/public/rtarget-releases`
+   - 名字 `rtarget-updater`，**要勾 Public bucket**（不公开的话应用读不到）
+2. **公开地址** —— ⚠️ **这个地址后台不会直接显示，是按规则拼出来的**：
+   ```
+   <项目地址>/storage/v1/object/public/<桶名>
+   ```
+   （后台能看到的那条 `xxxx.storage.supabase.co` 是 **S3 端点**，给程序化访问用的，
+   要配 access key，不是这个。别填错了 —— 已经踩过一次。）
 3. **填进 `app/.env.local`**（那个文件不进 git）：
    ```
-   VITE_UPDATE_BASE=https://<你的项目>.supabase.co/storage/v1/object/public/rtarget-releases
+   VITE_UPDATE_BASE=https://ysmxabkhuremmuytpgqq.supabase.co/storage/v1/object/public/rtarget-updater
    ```
 4. **重新打包**：`npm run apk`
 
    ⚠️ 地址是**构建时注入**的，不重新 build + 打包不生效。
+
+   验证有没有生效：点「更多」→ 看「检查更新」是不是提示"已是最新"或"发现新版"，
+   而不是"还没配更新源"。
 
 ### 边界（这几条别踩）
 
