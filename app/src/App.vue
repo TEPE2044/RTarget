@@ -3,6 +3,9 @@ import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { theme as antdTheme, message } from 'ant-design-vue'
 import { isAuthError, useAuth } from './lib/auth'
 import { registerBackButton, syncSystemBars } from './lib/native'
+import {
+  applyUpdate, currentVersion, fetchLatest, isNative, isUpdateConfigured,
+} from './lib/updater'
 import { useTheme } from './lib/theme'
 import {
   settleAll, getVitality, getLedger, getArchives, getAllNodes,
@@ -204,6 +207,47 @@ const showNewArchive = ref(false)
 const newArchiveName = ref('')
 /** 顶栏「更多」：手机上用底部抽屉，比下拉菜单好点 */
 const showMore = ref(false)
+
+// ---------- 应用内更新（OTA，只更前端） ----------
+
+const updateBusy = ref(false)
+const currentVer = ref('')
+let currentVerLoaded = false
+
+/** 打开「更多」抽屉时才去问当前版本，省得每次启动都打一次原生调用 */
+async function loadCurrentVersion() {
+  if (currentVerLoaded) return
+  currentVer.value = await currentVersion()
+  currentVerLoaded = true
+}
+
+async function onCheckUpdate() {
+  if (!isUpdateConfigured) {
+    return message.warning('还没配更新源（VITE_UPDATE_BASE）')
+  }
+  updateBusy.value = true
+  const hide = message.loading('正在检查…', 0)
+  try {
+    const info = await fetchLatest()
+    const cur = await currentVersion()
+    if (info.version === cur) {
+      hide()
+      currentVer.value = cur
+      currentVerLoaded = true
+      message.success('已是最新版本')
+      return
+    }
+    hide()
+    message.loading(`发现新版 ${info.version}，正在下载…`, 0)
+    // applyUpdate 内部的 set() 会立刻重载页面 —— 下面这几行正常跑不到
+    await applyUpdate(info)
+  } catch (e) {
+    hide()
+    message.error((e as Error).message)
+  } finally {
+    updateBusy.value = false
+  }
+}
 /** 改密码抽屉 */
 const showPassword = ref(false)
 const newPwd1 = ref('')
@@ -514,7 +558,8 @@ function archiveGoalCount(id: string): number {
             </svg>
           </button>
 
-          <button class="rt-iconbtn" aria-label="更多" @click="showMore = true">
+          <button class="rt-iconbtn" aria-label="更多"
+            @click="showMore = true; loadCurrentVersion()">
             <svg class="rt-ico" width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="5.2" r="1.6" />
               <circle cx="12" cy="12" r="1.6" />
@@ -769,6 +814,12 @@ function archiveGoalCount(id: string): number {
           </button>
           <button class="rt-sheetitem" @click="showMore = false; showPassword = true">
             设置密码
+          </button>
+          <!-- 应用内更新：只装在壳里才有意义（浏览器刷新就是最新） -->
+          <button v-if="isNative" class="rt-sheetitem" :disabled="updateBusy || busy"
+            @click="onCheckUpdate()">
+            检查更新
+            <span class="rt-meta rt-push rt-num">{{ currentVer || '—' }}</span>
           </button>
           <button class="rt-sheetitem rt-sheetitem-danger" @click="signOut()">退出登录</button>
         </div>

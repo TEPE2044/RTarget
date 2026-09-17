@@ -17,6 +17,9 @@ dist/
 *.apk
 *.aab
 
+# 应用内更新的发布产物（本地生成，传到 Supabase Storage 之后就作废，不入库）
+release/
+
 # ---------- 工具与编辑器 ----------
 # reasonix.toml 是 Reasonix 的权限白名单，里面塞满了历史命令全文，不该上传
 .reasonix/

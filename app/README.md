@@ -254,6 +254,62 @@ dex 阶段峰值内存不够时 Gradle 守护进程会**无声无息地消失** 
 2. 关掉不用的内存大户（Android Studio、多余的浏览器）
 3. 重跑 —— 已编译的部分会命中缓存，通常几十秒就过
 
+### 应用内更新（OTA，只更前端）
+
+改完前端不用再装 APK —— 应用里点一下就换新版。
+
+### 日常发版（两步）
+
+```bash
+npm run release     # 构建 + 打 zip + 生成 latest.json，产物都在 app/release/
+```
+
+然后把 `app/release/` 里的**两个文件**传到 Supabase Storage 的桶：
+
+- `dist-<版本>.zip`
+- `latest.json` ← **覆盖旧的**
+
+手机上：「更多」→「检查更新」→ 有新版就自动下载并重载。
+
+### 一次性配置（只做一次）
+
+1. **建桶**：Supabase 后台 → Storage → New bucket
+   - 名字随便（下面示例用 `rtarget-releases`），**要勾 Public**
+2. **拿到公开地址**，形如：
+   `https://<你的项目>.supabase.co/storage/v1/object/public/rtarget-releases`
+3. **填进 `app/.env.local`**（那个文件不进 git）：
+   ```
+   VITE_UPDATE_BASE=https://<你的项目>.supabase.co/storage/v1/object/public/rtarget-releases
+   ```
+4. **重新打包**：`npm run apk`
+
+   ⚠️ 地址是**构建时注入**的，不重新 build + 打包不生效。
+
+### 边界（这几条别踩）
+
+- **只能更新前端**。改动涉及原生（加插件、改包名 / 图标 / 权限）**必须重装 APK** ——
+  OTA 换的只是网页那部分。
+- **装了插件的这个包要先手动装一次**，之后才享受 OTA。
+- 新版启动失败会**自动回滚**到上一版（`notifyAppReady` 保护），所以不容易变砖。
+  为此 `capacitor.config.ts` 里 `autoDeletePrevious: false` —— 留着上一版当退路。
+- 更新源地址是编译进前端的，第一次配好之后就不用再动。
+
+### 实现
+
+| 文件 | 干什么 |
+|---|---|
+| `src/lib/updater.ts` | 封装 `notifyAppReady` / `fetchLatest` / `applyUpdate`；浏览器里全是空操作 |
+| `src/main.ts` | 启动时最先调 `markAppReady()` —— **漏了会让新版本被判成坏包并回滚** |
+| `scripts/release.mjs` | 构建 → 打 zip → 算 sha256 → 写 latest.json |
+| `capacitor.config.ts` | `CapacitorUpdater.autoUpdate: 'off'` —— 全手动，不让插件自己检查 |
+
+两个容易搞错的地方：
+
+- zip 里 **dist 的内容要直接铺在根**（`index.html` 打头），**不能套一层 `dist/`** —— 套了会白屏。
+  `release.mjs` 用的是 `addLocalFolder`，行为就是铺进去。
+- `applyUpdate()` 内部调 `CapacitorUpdater.set()` 会**立刻销毁 JS 上下文并重载**，
+  所以它之后的代码不保证执行 —— 别在后面写"更新成功"的提示，写不到。
+
 ### 登录 / 注册（邮箱验证码，不用魔法链接）
 
 **流程定稿（2026-09-16）：彻底不用魔法链接。**

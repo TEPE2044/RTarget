@@ -31,6 +31,22 @@ const config: CapacitorConfig = {
     SystemBars: {
       insetsHandling: 'css',
     },
+
+    /**
+     * 应用内更新（OTA，见 src/lib/updater.ts）
+     *
+     * autoUpdate: 'off' —— **不让插件自己检查**，全部交给应用里那个
+     * 「检查更新」按钮触发。默认值会自动去查 updateUrl，而我们要手动。
+     *
+     * autoDeleteFailed: 下载/启动失败的包自动清掉，免得占地方。
+     * autoDeletePrevious: **保持 false（默认）** —— 留着上一版，
+     * 万一新版有 bug 还能回滚，删了就只剩重装 APK 一条路。
+     */
+    CapacitorUpdater: {
+      autoUpdate: 'off',
+      autoDeleteFailed: true,
+      autoDeletePrevious: false,
+    },
   },
 }
 
