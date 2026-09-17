@@ -89,11 +89,12 @@ const stats = computed(() => ({
   lost: ledger.value.filter((l) => l.amount < 0).reduce((s, l) => s + Number(l.amount), 0),
 }))
 
-/** 底部导航：手机上要短，长词放不下。5 个 tab 在 390px 下每格还有 78px */
+/** 底部导航：手机上要短，长词放不下。5 个 tab 在 390px 下每格还有 78px。
+ *  「执行」放正中间（第 3 位）—— 它是最常点的一个，拇指最好够 */
 const pages = computed(() => [
   { key: 'home' as PageKey, label: '首页', badge: 0 },
-  { key: 'running' as PageKey, label: '执行', badge: pendingGroups.value.length },
   { key: 'todo' as PageKey, label: '待办', badge: 0 },
+  { key: 'running' as PageKey, label: '执行', badge: pendingGroups.value.length },
   { key: 'wish' as PageKey, label: '愿望', badge: 0 },
   { key: 'history' as PageKey, label: '历史', badge: 0 },
 ])

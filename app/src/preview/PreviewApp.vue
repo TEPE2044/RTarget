@@ -117,8 +117,8 @@ const todos: Todo[] = [
   { id: 't6', user_id: 'u1', content: '退掉不用的订阅', status: 'done', done_at: at(-4), taken_at: null, created_at: at(-12) },
 ]
 
-// tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 待办 / 3 愿望 / 4 历史 / 5 设目标表单
-const tabs = ['首页', '执行', '待办', '愿望', '历史', '表单']
+// tab 顺序与 App 的底部导航一致：0 首页 / 1 待办 / 2 执行 / 3 愿望 / 4 历史 / 5 设目标表单
+const tabs = ['首页', '待办', '执行', '愿望', '历史', '表单']
 const q = new URLSearchParams(location.search)
 const tab = ref(Number(q.get('tab') ?? 0))
 const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light')
@@ -229,8 +229,8 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
         <span class="rt-meta">排版预览（dev only）· 顶栏右侧按钮可切深浅色</span>
       </div>
 
-      <!-- 执行（tab=1） -->
-      <template v-if="tab === 1">
+      <!-- 执行（tab=2） -->
+      <template v-if="tab === 2">
         <div class="rt-chips">
           <button v-for="(a, i) in openArchives" :key="a" class="rt-chip" :class="{ active: i === 0 }">
             <span v-if="pendingIdx.includes(i)" class="rt-dot"></span>{{ a }}
@@ -313,8 +313,8 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
         </div>
       </template>
 
-      <!-- 待办（tab=2）· 走真实组件 -->
-      <template v-else-if="tab === 2">
+      <!-- 待办（tab=1）· 走真实组件 -->
+      <template v-else-if="tab === 1">
         <TodosList :todos="todos" />
       </template>
 
@@ -399,12 +399,12 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
             </svg>
             <svg v-else-if="i === 1" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
-              <circle cx="12" cy="12" r="8.3" /><circle cx="12" cy="12" r="3.4" />
+              <path d="M4.4 6.6h2.4M4.4 12h2.4M4.4 17.4h2.4" />
+              <path d="M10.6 6.6h9M10.6 12h9M10.6 17.4h9" />
             </svg>
             <svg v-else-if="i === 2" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
-              <path d="M4.4 6.6h2.4M4.4 12h2.4M4.4 17.4h2.4" />
-              <path d="M10.6 6.6h9M10.6 12h9M10.6 17.4h9" />
+              <circle cx="12" cy="12" r="8.3" /><circle cx="12" cy="12" r="3.4" />
             </svg>
             <svg v-else-if="i === 3" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -419,14 +419,14 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
               <rect x="4.6" y="3.8" width="14.8" height="16.4" rx="2" />
               <path d="M8.4 8.6h7.2M8.4 12h7.2M8.4 15.4h4.4" />
             </svg>
-            <span v-if="i === 1" class="rt-tab-badge">4</span>
+            <span v-if="i === 2" class="rt-tab-badge">4</span>
           </span>
           <span>{{ t }}</span>
         </button>
       </div>
     </nav>
 
-    <div v-if="tab === 1" class="rt-fabwrap">
+    <div v-if="tab === 2" class="rt-fabwrap">
       <div class="rt-fabwrap-inner">
         <button class="rt-fab" aria-label="设一个新目标" @click="showSheet = true">
           <svg class="rt-ico" width="26" height="26" viewBox="0 0 24 24" fill="none"

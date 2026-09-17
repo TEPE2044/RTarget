@@ -23,7 +23,8 @@ VITE_SUPABASE_ANON_KEY=...          # 或 VITE_SUPABASE_PUBLISHABLE_KEY=...
 
 - **顶栏**（`.rt-appbar`）：品牌 + 实时时钟 + 刷新 / 深浅色 / 更多三个图标按钮，
   吸顶、半透明磨砂
-- **底部导航**（`.rt-tabbar`）：首页 / 执行 / 待办 / 愿望 / 历史，带图标和数量角标，fixed 贴底
+- **底部导航**（`.rt-tabbar`）：首页 / 待办 / **执行** / 愿望 / 历史，带图标和数量角标，fixed 贴底。
+  「执行」放**正中间**（第 3 位）—— 它是最常点的一个，拇指最好够
 - **右下主按钮**（`.rt-fab`）：只在「执行」页出现，点开设新目标
 - **弹窗一律是底部抽屉**：`<a-modal wrap-class-name="rt-sheet">`，
   配 `src/style.css` 里的 `.ant-modal-wrap.rt-sheet` 实现圆角、抓手、吸底按钮
@@ -80,7 +81,7 @@ VITE_SUPABASE_ANON_KEY=...          # 或 VITE_SUPABASE_PUBLISHABLE_KEY=...
 用来在没登录的情况下看排版。不进构建产物（`vite build` 只打包 `index.html`）。
 
 - `http://localhost:5173/preview.html?tab=0&theme=light`
-- `?tab=0|1|2|3|4|5` → 首页 / 执行 / **待办** / **愿望** / 历史 / 设目标表单
+- `?tab=0|1|2|3|4|5` → 首页 / **待办** / 执行 / **愿望** / 历史 / 设目标表单
   （顺序与 App 底部导航一致，眼见即所得）
 - `?theme=light|dark`
 - `?sheet=1` 打开设目标的底部抽屉，`?more=1` 打开「更多」抽屉
