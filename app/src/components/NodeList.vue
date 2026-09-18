@@ -56,19 +56,41 @@ function isOverdue(n: GameNode): boolean {
 }
 
 /**
- * due_at 存的是「判负时刻」= 完成日的次日 0 点，
- * 展示时要退回前一天，读起来才是「你哪天得做完」。
+ * due_at 存的就是**判负时刻**（v1.4 起死线精确到分钟，到点即判负）。
+ *
+ * 例外：恰好落在 0 点的按「前一天全天」读 —— 存量数据全是这个形状
+ * （旧版把「你要在哪天做完」翻译成了次日 0 点），这样显示跟以前一致。
  */
 function dueText(dueAt: string): string {
   const d = new Date(dueAt)
-  d.setDate(d.getDate() - 1)
-  return `${d.getMonth() + 1}/${d.getDate()} 截止`
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (hm === '00:00') {
+    const prev = new Date(dueAt)
+    prev.setDate(prev.getDate() - 1)
+    return `${prev.getMonth() + 1}/${prev.getDate()} 全天`
+  }
+  return `${d.getMonth() + 1}/${d.getDate()} ${hm}`
 }
 
+/** 剩余时间：还剩两天以上就只报天，进了最后两天才精确到小时/分钟 */
 function leftText(dueAt: string): string {
   const ms = new Date(dueAt).getTime() - now.value.getTime()
   if (ms <= 0) return '已到期'
-  return `剩 ${Math.ceil(ms / 86_400_000)} 天`
+  const mins = Math.floor(ms / 60_000)
+  if (mins >= 2880) return `剩 ${Math.ceil(mins / 1440)} 天`
+  if (mins >= 60) return `剩 ${Math.floor(mins / 60)} 小时 ${mins % 60} 分`
+  return `剩 ${Math.max(1, mins)} 分钟`
+}
+
+/**
+ * 只在死线进到两天内时附上"还剩多久"。
+ * 平时每张卡都挂着倒计时反而让人麻木，到临界了再出现才有推动力。
+ */
+function soonLeft(dueAt: string): string {
+  const ms = new Date(dueAt).getTime() - now.value.getTime()
+  if (ms <= 0 || ms >= 2 * 86_400_000) return ''
+  return leftText(dueAt)
 }
 
 interface Pill { text: string; cls: string }
@@ -242,7 +264,9 @@ async function onConcede(n: GameNode, tip: string) {
               </div>
               <div class="rt-line2">
                 <span class="rt-meta">{{ tierName[g.a.tier] }} · {{ g.a.stake }} 分</span>
-                <span class="rt-meta">死线 {{ dueText(g.a.due_at) }}</span>
+                <span class="rt-meta">
+                  死线 {{ dueText(g.a.due_at) }}{{ soonLeft(g.a.due_at) ? ' · ' + soonLeft(g.a.due_at) : '' }}
+                </span>
                 <span v-if="canComplete(g.a) || canConcede(g.a)" class="rt-btns">
                   <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy"
                     @click="onComplete(g.a, '目标达成，奖励 B 已到账')">完成</button>

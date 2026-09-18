@@ -18,6 +18,12 @@ const at = (offsetDays: number) => {
   d.setHours(0, 0, 0, 0)
   return d.toISOString()
 }
+/** 带具体时刻的死线（v1.4）：0 点的走「前一天全天」，非 0 点的直接显示时刻 */
+const atHM = (offsetDays: number, h: number, m = 0) => {
+  const d = new Date(Date.now() + offsetDays * DAY)
+  d.setHours(h, m, 0, 0)
+  return d.toISOString()
+}
 
 const base: GameNode = {
   id: '', archive_id: 'a1', user_id: 'u1', kind: 'A', parent_id: null,
@@ -28,9 +34,9 @@ const base: GameNode = {
 const mk = (o: Partial<GameNode>): GameNode => ({ ...base, ...o })
 
 const nodes: GameNode[] = [
-  mk({ id: 'a1', kind: 'A', content: '做完 660 题第三章', due_at: at(1) }),
-  mk({ id: 'b1', kind: 'B', parent_id: 'a1', content: '看一集纪录片', status: 'bound', due_at: at(1) }),
-  mk({ id: 'c1', kind: 'C', parent_id: 'a1', content: '把堆着的快递盒清掉', status: 'bound', due_at: at(4) }),
+  mk({ id: 'a1', kind: 'A', content: '做完 660 题第三章', due_at: atHM(1, 18) }),
+  mk({ id: 'b1', kind: 'B', parent_id: 'a1', content: '看一集纪录片', status: 'bound', due_at: atHM(1, 18) }),
+  mk({ id: 'c1', kind: 'C', parent_id: 'a1', content: '把堆着的快递盒清掉', status: 'bound', due_at: atHM(4, 9, 30) }),
 
   mk({
     id: 'a2', kind: 'A', content: '跑完半马训练计划', status: 'settled', due_at: at(-2),
@@ -127,9 +133,11 @@ const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light'
 type AuthStep = 'login' | 'code-email' | 'code-verify' | 'code-password'
 const authMode = ref<AuthStep | null>((q.get('auth') as AuthStep | null) ?? null)
 
-// ---- 设目标表单的预览状态（C 死线 = A 之后 1~3 天；A/B 都能从清单挑或自己写）----
-const pDue = ref('2026-08-01')
+// ---- 设目标表单的预览状态（死线精确到时刻；C 的日期在 A 之后 1~3 天、时刻自定）----
+const pDue = ref('2026-08-01T18:00')
 const pOffset = ref(3)
+/** C 的到期时刻。默认跟 A 一致 → 补做窗口正好是整 1/2/3 天 */
+const pPenaltyTime = ref('18:00')
 /** 目标来源：?goal=free 切到「自己写」，默认演示"从目标单选" */
 const pGoalSource = ref<'todo' | 'free'>(q.get('goal') === 'free' ? 'free' : 'todo')
 const pTodoId = ref('t1')
@@ -144,11 +152,6 @@ const showSheet = ref(tab.value === 5 || q.get('sheet') === '1')
 /** 顶栏「更多」抽屉：?more=1 可直接截图 */
 const showMore = ref(q.get('more') === '1')
 
-const todayStr = (() => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-})()
-
 function shift(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number)
   const dt = new Date(y, m - 1, d)
@@ -156,13 +159,18 @@ function shift(dateStr: string, days: number): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 const shortD = (s: string) => {
-  const [, m, d] = s.split('-').map(Number)
+  const [, m, d] = s.slice(0, 10).split('-').map(Number)
   return `${m}/${d}`
 }
+const pDueDatePart = computed(() => pDue.value.slice(0, 10))
 const pOptions = computed(() =>
-  [1, 2, 3].map((o) => ({ o, date: shift(pDue.value, o), hint: `${shortD(shift(pDue.value, o))} 截止` }))
+  [1, 2, 3].map((o) => ({
+    o,
+    date: shift(pDueDatePart.value, o),
+    hint: `${shortD(shift(pDueDatePart.value, o))} ${pPenaltyTime.value}`,
+  }))
 )
-const pPenaltyDate = computed(() => shift(pDue.value, pOffset.value))
+const pPenaltyDate = computed(() => shift(pDueDatePart.value, pOffset.value))
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', theme.value)
@@ -479,10 +487,10 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
               <a-select-option value="low">低（5 分）</a-select-option>
             </a-select>
           </a-form-item>
-          <a-form-item label="A 死线（哪天做完）" style="flex: 1">
-            <a-input v-model:value="pDue" type="date" :min="todayStr" />
-          </a-form-item>
         </div>
+        <a-form-item label="A 死线（做到这一刻，到点判负）">
+          <a-input v-model:value="pDue" type="datetime-local" />
+        </a-form-item>
 
         <a-form-item label="奖励 B（想做的事 · 档位继承 A）">
           <div class="rt-seg" style="margin-bottom: 10px">
@@ -516,7 +524,7 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
           <a-input placeholder="如果没做成，被强制面对的事" />
         </a-form-item>
 
-        <a-form-item label="C 死线（哪天做完 · 只能落在 A 死线之后的三天内）">
+        <a-form-item label="C 死线（日期在 A 之后 1~3 天内，时刻自定）">
           <div class="rt-seg">
             <button v-for="o in pOptions" :key="o.o" type="button" class="rt-segbtn"
               :class="{ active: pOffset === o.o }" @click="pOffset = o.o">
@@ -524,10 +532,14 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
               <span class="rt-meta">{{ o.hint }}</span>
             </button>
           </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px">
+            <span class="rt-meta">到期时刻</span>
+            <a-input v-model:value="pPenaltyTime" type="time" style="width: 140px" />
+          </div>
         </a-form-item>
         <p class="rt-meta" style="margin: -12px 0 16px">
-          A 死线 {{ shortD(pDue) }}（次日 0 点判负）· 惩罚 C 死线 {{ shortD(pPenaltyDate) }}
-          —— 这段就是惩罚复合体的补做窗口
+          A 死线 {{ shortD(pDue) }} {{ pDue.slice(11, 16) }}（到点判负）· C 死线
+          {{ shortD(pPenaltyDate) }} {{ pPenaltyTime }} —— 改上面的日期和时刻，几个选项会跟着重算
         </p>
 
         <div class="rt-sheet-actions">

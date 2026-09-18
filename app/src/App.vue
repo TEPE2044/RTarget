@@ -340,25 +340,24 @@ function addDays(dateStr: string, days: number): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
-function localDateStr(offsetDays: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 /**
- * 完成日 → 结算时刻
- * 死线是「你要在哪天做完」：当天 24:00 截止，判负发生在**次日 0 点**。
- * 所以库里存的 due_at = 完成日 + 1 天的 0 点。今天可选。
+ * 死线 = **一个具体时刻**，到点即判负（机制 v1.4）。
+ * 表单用 datetime-local（`YYYY-MM-DDTHH:mm`），这里转成 ISO 存进 due_at。
+ * 数据库不用改：settle_all 判的就是 `due_at < now()`，本来就支持到秒。
  */
-function dueInstant(workDate: string): string {
-  const d = new Date(workDate + 'T00:00:00')
-  d.setDate(d.getDate() + 1)
-  return d.toISOString()
+function toIso(localDT: string): string {
+  return new Date(localDT).toISOString()
 }
 
-/** 最早只能是今天（今天做，明天 0 点结算） */
-const minDueDate = localDateStr(0)
+/** 现在（+偏移分钟）对应的 datetime-local 字符串 */
+function localDTStr(offsetMinutes = 0): string {
+  const d = new Date(Date.now() + offsetMinutes * 60_000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** A 死线不能早于此刻。每次打开表单都重算，免得页面开久了这条线过时 */
+const minDueLocal = ref(localDTStr())
 
 const showGoalForm = ref(false)
 
@@ -372,7 +371,8 @@ type PenaltyOffset = (typeof PENALTY_OFFSETS)[number]
 const goalForm = ref({
   content: '',
   tier: 'low' as Tier,
-  dueDate: minDueDate,
+  /** A 死线：datetime-local 字符串（本地时刻），默认明天此刻 */
+  dueAt: localDTStr(24 * 60),
   penaltyOffset: 3 as PenaltyOffset,
   /** 挑中的待办 id（目标来源 = 目标单时用） */
   todoId: '',
@@ -431,21 +431,76 @@ const rewardText = computed(() =>
 )
 
 function shortDate(dateStr: string): string {
-  const [, m, d] = dateStr.split('-').map(Number)
+  // 只取日期部分：既吃 'YYYY-MM-DD'，也吃 'YYYY-MM-DDTHH:mm'
+  const [, m, d] = dateStr.slice(0, 10).split('-').map(Number)
   return `${m}/${d}`
 }
 
-/** C 死线由 A 死线 + 偏移算出来，用户不能手填 */
-const penaltyDate = computed(() => addDays(goalForm.value.dueDate, goalForm.value.penaltyOffset))
+/** A 死线的日期部分（C 的日期从它推） */
+const dueDatePart = computed(() => goalForm.value.dueAt.slice(0, 10))
+/** A 死线的时刻部分（HH:mm） */
+const dueTimePart = computed(() => goalForm.value.dueAt.slice(11, 16) || '23:59')
+
+/**
+ * C 的到期时刻。默认跟着 A 走 —— 这样补做窗口正好是整 1/2/3 天；
+ * 用户一旦自己改过就不再跟随（否则改 A 会把他填的值冲掉）。
+ */
+const penaltyTime = ref(dueTimePart.value)
+const penaltyTimeTouched = ref(false)
+watch(dueTimePart, (t) => {
+  if (!penaltyTimeTouched.value) penaltyTime.value = t
+})
+
+/** C 死线 = A 的日期 + 偏移天，时刻用上面那个（日期仍是硬约束，时刻自由） */
+const penaltyDateTime = computed(
+  () => `${addDays(dueDatePart.value, goalForm.value.penaltyOffset)}T${penaltyTime.value}`
+)
 const penaltyOptions = computed(() =>
   PENALTY_OFFSETS.map((offset) => {
-    const date = addDays(goalForm.value.dueDate, offset)
-    return { offset, label: `后 ${offset} 天`, hint: `${shortDate(date)} 截止` }
+    const date = addDays(dueDatePart.value, offset)
+    return { offset, label: `后 ${offset} 天`, hint: `${shortDate(date)} ${penaltyTime.value}` }
   })
 )
 
+/** 补做窗口时长（A 判负 → C 到期），写成人话 */
+const windowText = computed(() => {
+  const ms = new Date(penaltyDateTime.value).getTime() - new Date(goalForm.value.dueAt).getTime()
+  if (ms <= 0) return '——'
+  const mins = Math.round(ms / 60_000)
+  if (mins >= 1440) {
+    const d = Math.floor(mins / 1440)
+    const h = Math.round((mins % 1440) / 60)
+    return h ? `${d} 天 ${h} 小时` : `${d} 天`
+  }
+  if (mins >= 60) return `${Math.round((mins / 60) * 10) / 10} 小时`
+  return `${mins} 分钟`
+})
+
 /** 活力值穿透负值时，高档与 ALL IN 禁用（机制 v1.2） */
 const highTiersDisabled = computed(() => vitality.value < 0)
+
+/**
+ * 重置表单。死线默认「明天此刻」——
+ * 改成时刻之后"今天"不再天然安全（比如现在 19:00，默认今天 18:00 就已经过期了）
+ */
+function resetGoalForm() {
+  minDueLocal.value = localDTStr()
+  const def = localDTStr(24 * 60)
+  goalForm.value = {
+    content: '', tier: 'low', dueAt: def, penaltyOffset: 3,
+    todoId: '', rewardWishId: '', rewardContent: '',
+    penalty: { content: '' },
+  }
+  penaltyTimeTouched.value = false
+  penaltyTime.value = def.slice(11, 16)
+  saveToWishlist.value = false
+}
+
+/** 打开设目标抽屉：每次进来都重置，顺手把 min 和默认死线推到当前时间之后 */
+function openGoalForm() {
+  resetGoalForm()
+  showGoalForm.value = true
+}
 
 async function addGoal() {
   if (!activeArchiveId.value) return message.warning('先选一个存档')
@@ -460,6 +515,9 @@ async function addGoal() {
     )
   }
   if (!goalForm.value.penalty.content.trim()) return message.warning('惩罚 C 必填（一直拖延的事）')
+  if (new Date(goalForm.value.dueAt) <= new Date()) {
+    return message.warning('A 死线要晚于现在')
+  }
   if (highTiersDisabled.value && (goalForm.value.tier === 'high' || goalForm.value.tier === 'allin')) {
     return message.warning('活力值为负，高档与 ALL IN 暂不可押')
   }
@@ -479,8 +537,8 @@ async function addGoal() {
       archiveId: activeArchiveId.value,
       content: goalText.value,
       tier: goalForm.value.tier,
-      dueAt: dueInstant(goalForm.value.dueDate),
-      penaltyDueAt: dueInstant(penaltyDate.value),
+      dueAt: toIso(goalForm.value.dueAt),
+      penaltyDueAt: toIso(penaltyDateTime.value),
       reward: { content: rewardText.value, wishId },
       penalty: { content: goalForm.value.penalty.content.trim() },
       vitality: vitality.value,
@@ -489,12 +547,7 @@ async function addGoal() {
     })
     message.success('已押注设立，到点未申报即判负')
     showGoalForm.value = false
-    goalForm.value = {
-      content: '', tier: 'low', dueDate: minDueDate, penaltyOffset: 3,
-      todoId: '', rewardWishId: '', rewardContent: '',
-      penalty: { content: '' },
-    }
-    saveToWishlist.value = false
+    resetGoalForm()
     await refresh()
   } catch (e) {
     await reportError(e)
@@ -795,7 +848,7 @@ function archiveGoalCount(id: string): number {
       <!-- ---------- 主行动按钮（只在执行页出现） ---------- -->
       <div v-if="page === 'running' && activeArchive" class="rt-fabwrap">
         <div class="rt-fabwrap-inner">
-          <button class="rt-fab" :disabled="busy" aria-label="设一个新目标" @click="showGoalForm = true">
+          <button class="rt-fab" :disabled="busy" aria-label="设一个新目标" @click="openGoalForm()">
             <svg class="rt-ico" width="26" height="26" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <path d="M12 5.5v13M5.5 12h13" />
@@ -886,21 +939,21 @@ function archiveGoalCount(id: string): number {
             立项后这条会从目标单移出，事情就进「执行」页了。
           </p>
 
-          <div class="rt-form-row">
-            <a-form-item label="档位" style="flex: 1">
-              <a-select v-model:value="goalForm.tier">
-                <a-select-option value="low">低（5 分）</a-select-option>
-                <a-select-option value="mid">中（10 分）</a-select-option>
-                <a-select-option value="high" :disabled="highTiersDisabled">高（20 分）</a-select-option>
-                <a-select-option value="allin" :disabled="highTiersDisabled">
-                  ALL IN（当前活力值的 80%）
-                </a-select-option>
-              </a-select>
-            </a-form-item>
-            <a-form-item label="A 死线（哪天做完）" style="flex: 1">
-              <a-input v-model:value="goalForm.dueDate" type="date" :min="minDueDate" />
-            </a-form-item>
-          </div>
+          <a-form-item label="档位">
+            <a-select v-model:value="goalForm.tier">
+              <a-select-option value="low">低（5 分）</a-select-option>
+              <a-select-option value="mid">中（10 分）</a-select-option>
+              <a-select-option value="high" :disabled="highTiersDisabled">高（20 分）</a-select-option>
+              <a-select-option value="allin" :disabled="highTiersDisabled">
+                ALL IN（当前活力值的 80%）
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+
+          <!-- datetime-local 比 date 宽得多，跟档位并排会挤不下，独占一行 -->
+          <a-form-item label="A 死线（做到这一刻，到点判负）">
+            <a-input v-model:value="goalForm.dueAt" type="datetime-local" :min="minDueLocal" />
+          </a-form-item>
           <p v-if="highTiersDisabled" class="rt-meta" style="margin: -8px 0 12px; color: var(--rt-red)">
             活力值已穿透负值，高档与 ALL IN 暂不可押，回正后解锁。
           </p>
@@ -940,7 +993,7 @@ function archiveGoalCount(id: string): number {
             <a-input v-model:value="goalForm.penalty.content" placeholder="如果没做成，被强制面对的事" />
           </a-form-item>
 
-          <a-form-item label="C 死线（哪天做完 · 只能落在 A 死线之后的三天内）">
+          <a-form-item label="C 死线（日期在 A 之后 1~3 天内，时刻自定）">
             <div class="rt-seg">
               <button v-for="o in penaltyOptions" :key="o.offset" type="button" class="rt-segbtn"
                 :class="{ active: goalForm.penaltyOffset === o.offset }"
@@ -949,10 +1002,15 @@ function archiveGoalCount(id: string): number {
                 <span class="rt-meta">{{ o.hint }}</span>
               </button>
             </div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px">
+              <span class="rt-meta">到期时刻</span>
+              <a-input v-model:value="penaltyTime" type="time" style="width: 140px"
+                @change="penaltyTimeTouched = true" />
+            </div>
           </a-form-item>
           <p class="rt-meta" style="margin: -12px 0 16px">
-            A 死线 {{ shortDate(goalForm.dueDate) }}（次日 0 点判负）· 惩罚 C 死线
-            {{ shortDate(penaltyDate) }} —— 这段就是惩罚复合体的补做窗口
+            A 死线 {{ shortDate(dueDatePart) }} {{ dueTimePart }}（到点判负）· C 死线
+            {{ shortDate(penaltyDateTime) }} {{ penaltyTime }} —— 补做窗口 {{ windowText }}
           </p>
 
           <div class="rt-sheet-actions">
