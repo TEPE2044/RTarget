@@ -76,12 +76,71 @@ const groupsOf = (list: GameNode[]): Group[] =>
     .filter((n) => n.kind === 'A')
     .map((a) => ({ a, c: list.find((n) => n.parent_id === a.id && n.kind === 'C') ?? null }))
 
-/** 未封档存档里还没完成的目标（进行中 + 复合体中） */
+/** 一个未了结目标的"有效死线"：进了复合体就用 C 的（A 的已经过去了） */
+function effectiveDue(g: { a: GameNode; c: GameNode | null }): string {
+  return inCompound(g.a, g.c) && g.c ? g.c.due_at : g.a.due_at
+}
+
+/** 未封档存档里还没完成的目标（进行中 + 复合体中），按有效死线升序 —— 跟执行页一致 */
 const pendingGroups = computed(() => {
   const openIds = new Set(openArchives.value.map((a) => a.id))
   const list = allNodes.value.filter((n) => openIds.has(n.archive_id))
-  return groupsOf(list).filter((g) => g.a.status === 'active' || inCompound(g.a, g.c))
+  return groupsOf(list)
+    .filter((g) => g.a.status === 'active' || inCompound(g.a, g.c))
+    .sort((x, y) => new Date(effectiveDue(x)).getTime() - new Date(effectiveDue(y)).getTime())
 })
+
+/**
+ * 临期的事：未了结 + 死线在 48 小时内（含已经过点的），按死线升序。
+ *
+ * 死线精确到分钟之后，"什么时候到点"比"有几件事"重要得多 ——
+ * 以前 0 点结算，一整天都是缓冲；现在 18:00 就是 18:00。
+ * 首页顶上那条提醒就靠它。
+ */
+const UPCOMING_MS = 48 * 3600_000
+const upcomingGroups = computed(() =>
+  pendingGroups.value
+    .map((g) => ({ g, due: effectiveDue(g) }))
+    .filter((x) => new Date(x.due).getTime() - now.value.getTime() < UPCOMING_MS)
+    .sort((x, y) => new Date(x.due).getTime() - new Date(y.due).getTime())
+)
+
+/** 已经过了死线、还没被结算的（"待结算"，最该先看到） */
+const overdueCount = computed(
+  () => upcomingGroups.value.filter((x) => new Date(x.due) <= now.value).length
+)
+
+/** 最紧的那一件，首页横幅只报它一个（全量列表在下面「未完成的事」里） */
+const nextUp = computed(() => upcomingGroups.value[0] ?? null)
+
+/** 死线写成"人话时刻"：今天 18:00 / 明天 09:00 / 9/21 全天 */
+function dueWhen(due: string): string {
+  const d = new Date(due)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  // 恰好落在 0 点的按"前一天全天"读 —— 存量数据都是这个形状（同 NodeList）
+  const real = hm === '00:00' ? new Date(d.getTime() - 86_400_000) : d
+  const base = new Date(now.value)
+  base.setHours(0, 0, 0, 0)
+  const that = new Date(real)
+  that.setHours(0, 0, 0, 0)
+  const diff = Math.round((that.getTime() - base.getTime()) / 86_400_000)
+  const tail = hm === '00:00' ? '全天' : hm
+  if (diff === 0) return `今天 ${tail}`
+  if (diff === 1) return `明天 ${tail}`
+  if (diff === -1) return `昨天 ${tail}`
+  return `${real.getMonth() + 1}/${real.getDate()} ${tail}`
+}
+
+/** 还剩多久。超过一天就只报天。 */
+function dueIn(due: string): string {
+  const ms = new Date(due).getTime() - now.value.getTime()
+  if (ms <= 0) return '已过点'
+  const mins = Math.floor(ms / 60_000)
+  if (mins >= 1440) return `剩 ${Math.floor(mins / 1440)} 天`
+  if (mins >= 60) return `剩 ${Math.floor(mins / 60)} 小时 ${mins % 60} 分`
+  return `剩 ${Math.max(1, mins)} 分钟`
+}
 
 const allGroups = computed(() => groupsOf(allNodes.value))
 const stats = computed(() => ({
@@ -611,8 +670,8 @@ function archiveGoalCount(id: string): number {
       <!-- ---------- 顶部窄栏 ---------- -->
       <header class="rt-appbar">
         <div class="rt-appbar-inner">
-          <span class="rt-brand">RTarget</span>
-          <span class="rt-meta rt-num">{{ clock }}</span>
+          <span class="rt-brand mr-1">RTarget</span>
+          <span class="rt-meta rt-num mt-1">{{ clock }}</span>
           <span class="rt-push"></span>
 
           <button class="rt-iconbtn" :disabled="busy" aria-label="刷新"
@@ -651,6 +710,20 @@ function archiveGoalCount(id: string): number {
 
         <!-- ==================== 首页 ==================== -->
         <section v-if="page === 'home'">
+          <!-- 临期提醒：只报最紧的那一件 —— 全量列表在下面「未完成的事」里，不重复 -->
+          <button v-if="nextUp" class="rt-alert" @click="page = 'running'">
+            <span class="rt-alert-tx">
+              <span class="rt-t14s">
+                <template v-if="overdueCount > 0">有 {{ overdueCount }} 件已经过了死线</template>
+                <template v-else>{{ dueWhen(nextUp.due) }} 有一件要到点</template>
+              </span>
+              <span class="rt-meta rt-alert-sub">
+                {{ nextUp.g.a.content }} · {{ dueIn(nextUp.due) }}
+              </span>
+            </span>
+            <span class="rt-meta rt-push" style="white-space: nowrap">去处理 →</span>
+          </button>
+
           <div class="rt-card rt-vital">
             <div>
               <p class="rt-meta" style="margin: 0">活力值</p>
@@ -665,7 +738,6 @@ function archiveGoalCount(id: string): number {
               </span>
             </div>
           </div>
-          <p class="rt-meta rt-note">不留小数 · 活力值为负时禁押高档与 ALL IN</p>
 
           <div class="rt-card rt-strip rt-gap12">
             <div>
@@ -698,7 +770,10 @@ function archiveGoalCount(id: string): number {
                 </span>
                 <div class="rt-li-2">
                   <div class="rt-li-2-t">{{ g.a.content }}</div>
-                  <div class="rt-meta">{{ archiveName(g.a.archive_id) }}</div>
+                  <div class="rt-meta">
+                    {{ dueWhen(effectiveDue(g)) }} · {{ dueIn(effectiveDue(g)) }}
+                    <span style="opacity: 0.7">· {{ archiveName(g.a.archive_id) }}</span>
+                  </div>
                 </div>
               </div>
               <p v-if="pendingGroups.length === 0" class="rt-meta rt-hint">暂时没有未完成的事。</p>

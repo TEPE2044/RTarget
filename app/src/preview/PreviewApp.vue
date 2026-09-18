@@ -100,10 +100,10 @@ const ledger = [
 ]
 
 const pendingGroups = [
-  { id: 'a2', pill: 'p-amber', label: '复合体', text: '跑完半马训练计划', archive: '2026 秋招冲刺' },
-  { id: 'a3', pill: 'p-amber', label: '复合体', text: '投完 20 家简历', archive: '2026 秋招冲刺' },
-  { id: 'a1', pill: 'p-blue', label: '进行中', text: '做完 660 题第三章', archive: '2026 秋招冲刺' },
-  { id: 'a9', pill: 'p-blue', label: '进行中', text: '跑三次 5 公里', archive: '体重管理' },
+  { id: 'a1', pill: 'p-blue', label: '进行中', text: '做完 660 题第三章', due: '今天 18:00 · 剩 3 小时 20 分', archive: '2026 秋招冲刺' },
+  { id: 'a9', pill: 'p-blue', label: '进行中', text: '跑三次 5 公里', due: '明天 09:00 · 剩 18 小时', archive: '体重管理' },
+  { id: 'a2', pill: 'p-amber', label: '复合体', text: '跑完半马训练计划', due: '9/21 全天 · 剩 3 天', archive: '2026 秋招冲刺' },
+  { id: 'a3', pill: 'p-amber', label: '复合体', text: '投完 20 家简历', due: '9/21 全天 · 剩 3 天', archive: '2026 秋招冲刺' },
 ]
 
 const sealed = [
@@ -262,6 +262,15 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
 
       <!-- 首页（tab=0） -->
       <template v-else-if="tab === 0">
+        <!-- 临期提醒（真实那处在 App.vue，这里手写一份看样式） -->
+        <button class="rt-alert">
+          <span class="rt-alert-tx">
+            <span class="rt-t14s">今天 18:00 有一件要到点</span>
+            <span class="rt-meta rt-alert-sub">做完 660 题第三章 · 剩 3 小时 20 分</span>
+          </span>
+          <span class="rt-meta rt-push" style="white-space: nowrap">去处理 →</span>
+        </button>
+
         <div class="rt-card rt-vital">
           <div>
             <p class="rt-meta" style="margin: 0">活力值</p>
@@ -303,7 +312,9 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
               <span class="pill" :class="g.pill">{{ g.label }}</span>
               <div class="rt-li-2">
                 <div class="rt-li-2-t">{{ g.text }}</div>
-                <div class="rt-meta">{{ g.archive }}</div>
+                <div class="rt-meta">
+                  {{ g.due }} <span style="opacity: 0.7">· {{ g.archive }}</span>
+                </div>
               </div>
             </div>
           </div>

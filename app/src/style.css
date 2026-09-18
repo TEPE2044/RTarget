@@ -117,7 +117,7 @@ body { background: var(--rt-bg); }
     0 calc(12px + var(--rt-safe-left));
 }
 
-.rt-brand { font-size: 16px; font-weight: 500; letter-spacing: 0.02em; }
+.rt-brand { font-size: 20px; font-weight: 500; letter-spacing: 0.02em; }
 
 .rt-iconbtn {
   flex: 0 0 34px;
@@ -304,6 +304,34 @@ body { background: var(--rt-bg); }
   background: var(--rt-card);
   border: 0.5px solid var(--rt-line);
   border-radius: 12px;
+}
+
+/* 首页顶部的临期提醒。整条可点（点进「执行」页），所以是个 button，
+   得把浏览器默认按钮样式全部清掉。
+   用琥珀色是因为它是"警告"不是"错误" —— 还没扣分，只是快到了。 */
+.rt-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--rt-amber-bg);
+  border: 0.5px solid var(--rt-amber);
+  color: var(--rt-amber);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.rt-alert .rt-meta { color: var(--rt-amber); }
+.rt-alert-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rt-alert-sub {
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rt-cardwrap { display: flex; overflow: hidden; }
 .rt-rail { flex: 0 0 3px; align-self: stretch; }
