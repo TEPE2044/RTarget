@@ -43,9 +43,32 @@ const allGroups = computed<Group[]>(() =>
 )
 
 const isOpenGroup = (g: Group) => g.a.status === 'active' || inCompound(g.a, g.c)
-const shown = computed(() =>
-  allGroups.value.filter((g) => (variant.value === 'open' ? isOpenGroup(g) : !isOpenGroup(g)))
-)
+
+/**
+ * 这一组当前真正起作用的死线。
+ *
+ * 进了复合体之后 A 的死线已经过去了（A 已经判负），此刻压着你的其实是 C 的死线 ——
+ * 所以排序键要跟着切，不然复合体会一直沉在下面。
+ */
+function effectiveDue(g: Group): string {
+  if (inCompound(g.a, g.c) && g.c) return g.c.due_at
+  return g.a.due_at
+}
+
+const shown = computed(() => {
+  const list = allGroups.value.filter((g) =>
+    variant.value === 'open' ? isOpenGroup(g) : !isOpenGroup(g)
+  )
+  // 只给「进行中」排序：死线越近越靠前（已过期的自然排最前，那是最该看的）。
+  // 已了结的那批保持原样（按创建时间），免得历史页的观感跟着变。
+  // 死线相同时按创建时间兜底，保证顺序稳定、不会每次刷新跳来跳去。
+  if (variant.value !== 'open') return list
+  return [...list].sort((x, y) => {
+    const diff = new Date(effectiveDue(x)).getTime() - new Date(effectiveDue(y)).getTime()
+    if (diff !== 0) return diff
+    return new Date(x.a.created_at).getTime() - new Date(y.a.created_at).getTime()
+  })
+})
 
 const tierName: Record<string, string> = { low: '低', mid: '中', high: '高', allin: 'ALL IN' }
 
