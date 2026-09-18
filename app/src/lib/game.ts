@@ -44,8 +44,12 @@ export interface Todo {
   id: string
   user_id: string
   content: string
-  /** open 待办 / taken 已立项（移出清单）/ done 直接勾掉 */
+  /** open 待办 / taken 已立项（移出清单）/ done 直接勾掉、或者格数用完了 */
   status: TodoStatus
+  /** 总格数。默认 1 = 一次性的；> 1 就是"打算重复做的事"（0017） */
+  times_total: number
+  /** 还剩几格。来源目标完成一次扣一格，扣到 0 就变成 done */
+  times_left: number
   done_at: string | null
   taken_at: string | null
   created_at: string
@@ -409,6 +413,13 @@ export async function completeNode(nodeId: string) {
       }
     }
 
+    // 同理：这条目标是从目标单挑来的话，消耗掉那条待办的一格（0017）
+    try {
+      await consumeTodoSlot(n.todo_id)
+    } catch {
+      /* 忽略 */
+    }
+
     await settleAll()
     return
   }
@@ -434,6 +445,17 @@ export async function completeNode(nodeId: string) {
     .update({ completed_at: new Date().toISOString() })
     .eq('id', nodeId)
   if (error) throw error
+
+  // A 的补做也算「最终完成了」，同样扣一格。
+  // （C 没有 todo_id，传进去也是空转；B 走不到这里。）
+  if (n.kind === 'A') {
+    try {
+      await consumeTodoSlot(n.todo_id)
+    } catch {
+      /* 忽略 */
+    }
+  }
+
   await settleAll()
 }
 
@@ -564,15 +586,52 @@ export async function getTodos(): Promise<Todo[]> {
   return data as Todo[]
 }
 
-export async function createTodo(content: string): Promise<Todo> {
+/**
+ * 新建一条待办。
+ * times = 打算重复几次（默认 1）。它只是个计数器、**不参与押注** ——
+ * 每完成一次由它立项的目标，就扣掉一格（见 consumeTodoSlot）。
+ */
+export async function createTodo(content: string, times = 1): Promise<Todo> {
   const user = await requireUser()
+  const n = Math.max(1, Math.min(99, Math.round(times) || 1))
   const { data, error } = await supabase
     .from('todos')
-    .insert({ user_id: user.id, content: content.trim() })
+    .insert({ user_id: user.id, content: content.trim(), times_total: n, times_left: n })
     .select()
     .single()
   if (error) throw error
   return data as Todo
+}
+
+/**
+ * 来源目标完成了 → 消耗掉待办的一格。
+ *
+ * **只在「最终完成了」时才扣** —— 判负、放弃都不扣，这正是需求的原话。
+ * 扣完变成 done（用完了）；还有剩就回到 open，清单里又能看见、可以再立项。
+ *
+ * 附加效果，失败不往上抛：调用方那边分已经加过、目标也已经完成，
+ * 不该让"扣格失败"表现成"整个操作出错"。用户还能在清单里手动勾。
+ */
+export async function consumeTodoSlot(todoId: string | null) {
+  if (!todoId) return
+  const { data: t } = await supabase
+    .from('todos')
+    .select('times_left')
+    .eq('id', todoId)
+    .maybeSingle()
+  if (!t) return
+  const left = Math.max(0, ((t as { times_left: number }).times_left ?? 1) - 1)
+  const { error } = await supabase
+    .from('todos')
+    .update({
+      times_left: left,
+      // 扣完 = 这条待办用完了；还有剩就放回清单，好再立项
+      status: left === 0 ? 'done' : 'open',
+      done_at: left === 0 ? new Date().toISOString() : null,
+      taken_at: null,
+    })
+    .eq('id', todoId)
+  if (error) throw error
 }
 
 export async function updateTodo(id: string, content: string) {

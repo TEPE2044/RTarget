@@ -120,13 +120,15 @@ const wishes: Wish[] = [
   { id: 'w6', user_id: 'u1', content: '买个新键帽', status: 'done', done_at: at(-8), done_archive_id: 'a4', created_at: at(-30) },
 ]
 
+// times_* = 电量格（0017）。默认 1 = 一次性的；> 1 的才显示格子。
+// 这里 t2 / t4 故意留成多次，用来看格子在不同数量下的样子。
 const todos: Todo[] = [
-  { id: 't1', user_id: 'u1', content: '把书桌彻底收拾一遍', status: 'open', done_at: null, taken_at: null, created_at: at(-7) },
-  { id: 't2', user_id: 'u1', content: '跑三次 5 公里', status: 'open', done_at: null, taken_at: null, created_at: at(-5) },
-  { id: 't3', user_id: 'u1', content: '把简历模板重写一遍', status: 'open', done_at: null, taken_at: null, created_at: at(-3) },
-  { id: 't4', user_id: 'u1', content: '给爸妈打个电话', status: 'open', done_at: null, taken_at: null, created_at: at(-2) },
-  { id: 't5', user_id: 'u1', content: '整理作品集文件夹', status: 'done', done_at: at(-1), taken_at: null, created_at: at(-9) },
-  { id: 't6', user_id: 'u1', content: '退掉不用的订阅', status: 'done', done_at: at(-4), taken_at: null, created_at: at(-12) },
+  { id: 't1', user_id: 'u1', content: '把书桌彻底收拾一遍', status: 'open', times_total: 1, times_left: 1, done_at: null, taken_at: null, created_at: at(-7) },
+  { id: 't2', user_id: 'u1', content: '跑三次 5 公里', status: 'open', times_total: 3, times_left: 2, done_at: null, taken_at: null, created_at: at(-5) },
+  { id: 't3', user_id: 'u1', content: '把简历模板重写一遍', status: 'open', times_total: 1, times_left: 1, done_at: null, taken_at: null, created_at: at(-3) },
+  { id: 't4', user_id: 'u1', content: '给爸妈打电话', status: 'open', times_total: 6, times_left: 5, done_at: null, taken_at: null, created_at: at(-2) },
+  { id: 't5', user_id: 'u1', content: '整理作品集文件夹', status: 'done', times_total: 1, times_left: 0, done_at: at(-1), taken_at: null, created_at: at(-9) },
+  { id: 't6', user_id: 'u1', content: '退掉不用的订阅', status: 'done', times_total: 1, times_left: 0, done_at: at(-4), taken_at: null, created_at: at(-12) },
 ]
 
 // tab 顺序与 App 的底部导航一致：0 首页 / 1 待办 / 2 执行 / 3 愿望 / 4 历史 / 5 设目标表单

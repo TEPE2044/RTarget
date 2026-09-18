@@ -21,6 +21,8 @@ const props = defineProps<{ todos: Todo[]; busy?: boolean }>()
 const emit = defineEmits<{ refresh: [] }>()
 
 const draft = ref('')
+/** 新建时的次数（电量格）。默认 1 = 一次性的；> 1 就是"打算重复做的事" */
+const draftTimes = ref(1)
 const editingId = ref<string | null>(null)
 const editingText = ref('')
 
@@ -43,10 +45,12 @@ async function act(fn: () => Promise<void>) {
 function onAdd() {
   const text = draft.value.trim()
   if (!text) return
+  const times = draftTimes.value // 先存下来：下面会重置
   return act(async () => {
-    await createTodo(text)
+    await createTodo(text, times)
     draft.value = ''
-    message.success('已加进目标单')
+    draftTimes.value = 1
+    message.success(times > 1 ? `已加进目标单（${times} 次）` : '已加进目标单')
     emit('refresh')
   })
 }
@@ -75,7 +79,7 @@ function saveEdit() {
 function onDone(t: Todo) {
   return act(async () => {
     await setTodoDone(t.id)
-    message.success('完成，没动分数')
+    message.success('已完成该任务')
     emit('refresh')
   })
 }
@@ -112,6 +116,10 @@ function dateText(iso: string | null): string {
       <div class="rt-line1 rt-gap8" style="flex-wrap: nowrap">
         <a-input v-model:value="draft" placeholder="随手记一条，比如：把书桌收拾了"
           :disabled="busy" @keyup.enter="onAdd()" />
+        <!-- 次数：打算重复做几次。默认 1，超过 1 就是"电量格"。
+             addon 那个 × 是必要的 —— 不然一个孤零零的"1"看不出是什么 -->
+        <a-input-number v-model:value="draftTimes" :min="1" :max="99" :controls="false"
+          addon-before="×" class="rt-times-in" :disabled="busy" />
         <button class="rbtn-primary rbtn-lg" :disabled="busy || !draft.trim()" @click="onAdd()">
           加入
         </button>
@@ -119,6 +127,9 @@ function dateText(iso: string | null): string {
       <p class="rt-meta" style="margin: 8px 2px 0">
         这些不押注、不加分也不扣分，就是记着。想让它变成正式目标，
         去「执行」页设目标时可以从这儿挑。
+      </p>
+      <p class="rt-meta" style="margin: 4px 2px 0">
+        中间那个数字是「打算做几次」：设成 3，就每完成一次由它立项的目标扣一格，扣完这条就用完。
       </p>
     </div>
 
@@ -139,24 +150,34 @@ function dateText(iso: string | null): string {
             <button class="rbtn" @click="cancelEdit()">撤</button>
           </div>
 
-          <div v-else class="rt-line1" style="flex-wrap: nowrap">
-            <span class="rt-t14s rt-li-main rt-todo-tx" style="cursor: pointer"
-              @click="startEdit(t)">{{ t.content }}</span>
-            <button class="rt-iconbtn rt-iconbtn-sm" :disabled="busy" aria-label="完成"
-              @click="onDone(t)">
-              <svg class="rt-ico" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4.8 12.6 9.6 17.4 19.2 6.9" />
-              </svg>
-            </button>
-            <a-popconfirm title="删掉这条待办？" ok-text="删除" cancel-text="取消" @confirm="onDelete(t)">
-              <button class="rt-iconbtn rt-iconbtn-sm rt-iconbtn-danger" :disabled="busy" aria-label="删除">
+          <div v-else>
+            <div class="rt-line1" style="flex-wrap: nowrap">
+              <span class="rt-t14s rt-li-main rt-todo-tx" style="cursor: pointer"
+                @click="startEdit(t)">{{ t.content }}</span>
+              <button class="rt-iconbtn rt-iconbtn-sm" :disabled="busy" aria-label="完成"
+                @click="onDone(t)">
                 <svg class="rt-ico" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 7h16M9.5 7V4.8h5V7M6.6 7l1 12.2h8.8L17.4 7" />
+                  stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4.8 12.6 9.6 17.4 19.2 6.9" />
                 </svg>
               </button>
-            </a-popconfirm>
+              <a-popconfirm title="删掉这条待办？" ok-text="删除" cancel-text="取消" @confirm="onDelete(t)">
+                <button class="rt-iconbtn rt-iconbtn-sm rt-iconbtn-danger" :disabled="busy" aria-label="删除">
+                  <svg class="rt-ico" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7h16M9.5 7V4.8h5V7M6.6 7l1 12.2h8.8L17.4 7" />
+                  </svg>
+                </button>
+              </a-popconfirm>
+            </div>
+            <!-- 电量格：只有多次的才显示（一次性的那个格子没信息量） -->
+            <div v-if="t.times_total > 1" class="rt-line2" style="margin-top: 5px">
+              <span class="rt-dots">
+                <span v-for="i in t.times_total" :key="i" class="rt-dot"
+                  :class="{ on: i <= t.times_left }"></span>
+              </span>
+              <span class="rt-meta">还剩 {{ t.times_left }} / {{ t.times_total }} 次</span>
+            </div>
           </div>
         </div>
       </div>
@@ -196,7 +217,9 @@ function dateText(iso: string | null): string {
               </button>
             </a-popconfirm>
           </div>
-          <p class="rt-meta" style="margin: 2px 0 0">{{ dateText(t.done_at) }} 勾掉</p>
+          <p class="rt-meta" style="margin: 2px 0 0">
+            {{ dateText(t.done_at) }} 勾掉<span v-if="t.times_total > 1"> · 共 {{ t.times_total }} 次</span>
+          </p>
         </div>
       </div>
     </div>
@@ -206,4 +229,20 @@ function dateText(iso: string | null): string {
 <style scoped>
 .rt-todo-tx { white-space: normal; word-break: break-word; }
 .rt-todo-done { color: var(--rt-tx3); text-decoration: line-through; white-space: normal; word-break: break-word; }
+
+/* 新建时的次数输入：只要个数字，不要上下箭头（手机上很难点）。
+   宽度算上 × 那个 addon。 */
+.rt-times-in { width: 76px; flex: 0 0 auto; }
+.rt-times-in :deep(input) { text-align: center; }
+
+/* 电量格：小方块比圆点更像"格" */
+.rt-dots { display: inline-flex; align-items: center; gap: 3px; }
+.rt-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--rt-line-strong);
+}
+.rt-dot.on { background: var(--rt-blue); }
 </style>
