@@ -333,6 +333,18 @@ body { background: var(--rt-bg); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 「有新版本可用」那条。用蓝色而不是琥珀色 —— 这是"信息"不是"警告"，
+   要能跟下面那条临期的琥珀色横幅一眼分开（两条可能同时出现）。 */
+.rt-alert-up {
+  background: var(--rt-blue-bg);
+  border-color: var(--rt-blue);
+  color: var(--rt-blue);
+}
+.rt-alert-up .rt-meta { color: var(--rt-blue); }
+/* 正在下载时整条不可点，给个"它忙着"的观感 */
+.rt-alert-up:disabled { opacity: 0.65; cursor: default; }
+.rt-alert-up .rt-ico { flex: 0 0 auto; }
 .rt-cardwrap { display: flex; overflow: hidden; }
 .rt-rail { flex: 0 0 3px; align-self: stretch; }
 .rt-rail-blue { background: var(--rt-rail-blue); }

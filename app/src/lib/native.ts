@@ -67,3 +67,22 @@ export function registerBackButton(handlers: {
     CapApp.minimizeApp()
   })
 }
+
+/**
+ * 从后台切回前台时回调（浏览器上是空操作）。
+ *
+ * 用于"每次打开都自检一下" —— Android 上切走再切回来**不会重载 JS**，
+ * 光靠 onMounted 只覆盖了冷启动那一次。挂一天的应用等于从没检过。
+ *
+ * 返回一个取消函数；不需要时调用它（本应用里 App 组件不卸载，留着也无害）。
+ */
+export function onAppResume(cb: () => void): () => void {
+  if (!isNative) return () => {}
+  let remove: (() => void) | null = null
+  void CapApp.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) cb()
+  }).then((handle) => {
+    remove = () => void handle.remove()
+  })
+  return () => remove?.()
+}

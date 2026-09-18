@@ -9,7 +9,7 @@ import type { GameNode, Wish, Todo } from '../lib/game'
 // dev-only 排版预览：真实组件 + 假数据，不连库。
 // 打开 http://localhost:5173/preview.html 看，构建时不会被打包。
 // tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 待办 / 3 愿望 / 4 历史 / 5 表单
-// 另外支持 ?theme=light|dark、?sheet=1（设目标抽屉）、?more=1、?debug=1。
+// 另外支持 ?theme=light|dark、?sheet=1（设目标抽屉）、?more=1、?debug=1、?update=1。
 // ?auth=login|code-email|code-verify|code-password 直接看登录那几步。
 
 const DAY = 86_400_000
@@ -262,6 +262,19 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
 
       <!-- 首页（tab=0） -->
       <template v-else-if="tab === 0">
+        <!-- 有新版本（真实那处在 App.vue，这里手写一份看样式）。?update=1 才出现 -->
+        <button v-if="q.get('update')" class="rt-alert rt-alert-up">
+          <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.8v10.4M7.6 10.2 12 14.6l4.4-4.4M4.6 19.4h14.8" />
+          </svg>
+          <span class="rt-alert-tx">
+            <span class="rt-t14s">有新版本可用</span>
+            <span class="rt-meta rt-alert-sub">新版 9/18 14:52 · 当前 9/18 10:58</span>
+          </span>
+          <span class="rt-meta rt-push" style="white-space: nowrap">更新 →</span>
+        </button>
+
         <!-- 临期提醒（真实那处在 App.vue，这里手写一份看样式） -->
         <button class="rt-alert">
           <span class="rt-alert-tx">

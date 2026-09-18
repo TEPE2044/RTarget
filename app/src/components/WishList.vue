@@ -138,8 +138,8 @@ function dateText(iso: string | null): string {
           <div v-if="editingId === w.id" class="rt-line1" style="flex-wrap: nowrap">
             <a-input v-model:value="editingText" size="small" :disabled="busy"
               @keyup.enter="saveEdit()" @keyup.esc="cancelEdit()" />
-            <button class="rbtn" :disabled="busy" @click="saveEdit()">存</button>
-            <button class="rbtn" @click="cancelEdit()">撤</button>
+            <button class="rbtn" :disabled="busy" @click="saveEdit()">✓</button>
+            <button class="rbtn" @click="cancelEdit()">✕</button>
           </div>
 
           <div v-else class="rt-line1" style="flex-wrap: nowrap">

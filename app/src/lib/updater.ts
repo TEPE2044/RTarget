@@ -66,6 +66,29 @@ export async function fetchLatest(): Promise<LatestInfo> {
 }
 
 /**
+ * 静默自检：有新版就返回它，没有（或压根检查不了）就返回 null。
+ *
+ * 跟 `fetchLatest()` 的区别是**它永远不抛异常** —— 这个函数是给"打开应用时
+ * 顺手问一句"用的，网络不通、桶挂了、版本信息格式不对，都不该弹错误框，
+ * 用户没主动要求检查，就当他没问过。
+ *
+ * 浏览器里直接返回 null：网页每次刷新本来就是最新的，没有"新版"这回事。
+ */
+export async function checkForUpdate(): Promise<{
+  latest: LatestInfo
+  current: string
+} | null> {
+  if (!isNative || !isUpdateConfigured) return null
+  try {
+    const [latest, current] = await Promise.all([fetchLatest(), currentVersion()])
+    if (latest.version === current) return null
+    return { latest, current }
+  } catch {
+    return null
+  }
+}
+
+/**
  * 下载并切到新版本。
  *
  * ⚠️ `set()` 会**立刻销毁当前 JS 上下文并重载**，所以它之后的代码不保证执行 ——

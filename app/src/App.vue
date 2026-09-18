@@ -2,10 +2,11 @@
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { theme as antdTheme, message } from 'ant-design-vue'
 import { isAuthError, useAuth } from './lib/auth'
-import { registerBackButton, syncSystemBars } from './lib/native'
+import { registerBackButton, onAppResume, syncSystemBars } from './lib/native'
 import {
-  applyUpdate, currentVersion, fetchLatest, isNative, isUpdateConfigured,
+  applyUpdate, checkForUpdate, currentVersion, fetchLatest, isNative, isUpdateConfigured,
 } from './lib/updater'
+import type { LatestInfo } from './lib/updater'
 import { useTheme } from './lib/theme'
 import {
   settleAll, getVitality, getLedger, getArchives, getAllNodes,
@@ -47,6 +48,8 @@ const activeArchiveId = ref<string | null>(null)
 const historyArchiveId = ref<string | null>(null)
 
 let timer: ReturnType<typeof setInterval> | null = null
+/** 取消"切回前台"的监听（浏览器上是空函数） */
+let stopResume: (() => void) | null = null
 
 const openArchives = computed(() => archives.value.filter((a) => a.status === 'open'))
 const sealedArchives = computed(() => archives.value.filter((a) => a.status === 'sealed'))
@@ -263,9 +266,15 @@ onMounted(() => {
     currentPage: () => page.value,
     goHome: () => { page.value = 'home' },
   })
+
+  // 打开时自检一次；切回前台也再问一句（Android 上切回来不会重载 JS，
+  // 光靠 onMounted 只覆盖了冷启动 —— 挂一天的应用等于从没检过）
+  void autoCheckUpdate()
+  stopResume = onAppResume(() => void autoCheckUpdate())
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  stopResume?.()
 })
 
 // 壳里让系统栏图标跟着深浅主题走（浏览器上无副作用）
@@ -295,8 +304,53 @@ const showMore = ref(false)
 // ---------- 应用内更新（OTA，只更前端） ----------
 
 const updateBusy = ref(false)
+/** 自检发现的待装新版（null = 没发现 / 没检查） */
+const updateReady = ref<{ latest: LatestInfo; current: string } | null>(null)
+const updateApplying = ref(false)
 const currentVer = ref('')
 let currentVerLoaded = false
+/** 上次自检的时刻 —— 切回前台很频繁，别每次都打一次网络 */
+let lastAutoCheck = 0
+const AUTO_CHECK_GAP = 10 * 60 * 1000
+
+/**
+ * 打开应用 / 切回前台时顺手自检。**全静默** ——
+ * 网络不通、桶挂了都当作"没检查过"，不弹任何东西：用户没主动要求检查，
+ * 就不该被错误框打扰。发现了新版也不弹窗，只在首页挂一条横幅。
+ */
+async function autoCheckUpdate() {
+  if (!isNative || !isUpdateConfigured) return
+  if (updateReady.value) return // 已经发现了，不用再问
+  if (Date.now() - lastAutoCheck < AUTO_CHECK_GAP) return
+  lastAutoCheck = Date.now()
+  const found = await checkForUpdate()
+  if (!found) return
+  updateReady.value = found
+  currentVer.value = found.current
+  currentVerLoaded = true
+}
+
+/** 版本号（20260918-1452）写成"9/18 14:52"；认不出来就原样显示 */
+function fmtVer(v: string): string {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/.exec(v)
+  if (!m) return v
+  return `${Number(m[2])}/${Number(m[3])} ${m[4]}:${m[5]}`
+}
+
+/** 点首页那条横幅：下载并切到新版（切过去时页面会立刻重载） */
+async function onApplyUpdate() {
+  const info = updateReady.value?.latest
+  if (!info || updateApplying.value) return
+  updateApplying.value = true
+  const hide = message.loading('正在下载新版本…', 0)
+  try {
+    await applyUpdate(info)
+  } catch (e) {
+    hide()
+    updateApplying.value = false
+    message.error(`更新失败：${(e as Error).message}`)
+  }
+}
 
 /** 打开「更多」抽屉时才去问当前版本，省得每次启动都打一次原生调用 */
 async function loadCurrentVersion() {
@@ -318,6 +372,8 @@ async function onCheckUpdate() {
       hide()
       currentVer.value = cur
       currentVerLoaded = true
+      updateReady.value = null // 自检可能刚好赶上一次：以手动检查的结果为准
+      lastAutoCheck = Date.now()
       message.success('已是最新版本')
       return
     }
@@ -710,6 +766,27 @@ function archiveGoalCount(id: string): number {
 
         <!-- ==================== 首页 ==================== -->
         <section v-if="page === 'home'">
+          <!-- 有新版：打开应用时自检发现的。点一下直接装（装完页面会立刻重载，
+               横幅随之消失）。放在临期提醒上面 —— 它是"这次才出现"的一次性提示，
+               不压住就没人看得到；临期那条是常驻的，每天都在这儿。 -->
+          <button v-if="updateReady" class="rt-alert rt-alert-up" :disabled="updateApplying"
+            @click="onApplyUpdate()">
+            <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.8v10.4M7.6 10.2 12 14.6l4.4-4.4M4.6 19.4h14.8" />
+            </svg>
+            <span class="rt-alert-tx">
+              <span class="rt-t14s">有新版本可用</span>
+              <span class="rt-meta rt-alert-sub">
+                新版 {{ fmtVer(updateReady.latest.version) }} ·
+                当前 {{ fmtVer(updateReady.current) }}
+              </span>
+            </span>
+            <span class="rt-meta rt-push" style="white-space: nowrap">
+              {{ updateApplying ? '更新中…' : '更新 →' }}
+            </span>
+          </button>
+
           <!-- 临期提醒：只报最紧的那一件 —— 全量列表在下面「未完成的事」里，不重复 -->
           <button v-if="nextUp" class="rt-alert" @click="page = 'running'">
             <span class="rt-alert-tx">

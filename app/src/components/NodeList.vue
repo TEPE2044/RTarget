@@ -211,7 +211,7 @@ async function onConcede(n: GameNode, tip: string) {
 </script>
 
 <template>
-  <div class="rt-cards">
+  <div class="rt-cards mb-2">
     <article v-for="g in shown" :key="g.a.id" class="rt-card rt-cardwrap">
       <div class="rt-rail" :class="railCls(g)"></div>
       <div class="rt-node-body rt-pad">
@@ -236,7 +236,7 @@ async function onConcede(n: GameNode, tip: string) {
               </div>
               <p class="rt-t14" style="margin: 8px 0 0">{{ g.a.content }}</p>
               <p class="rt-meta" style="margin: 4px 0 0" :style="g.a.completed_at ? 'color: var(--rt-green)' : ''">
-                {{ g.a.completed_at ? '已申报完成，等另一边一起结算' : '还没补做' }}
+                {{ g.a.completed_at ? '已完成，等另一边一起结算' : '还没补做' }}
               </p>
               <div class="rt-actrow">
                 <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy"
@@ -256,7 +256,7 @@ async function onConcede(n: GameNode, tip: string) {
               </div>
               <p class="rt-t14" style="margin: 8px 0 0">{{ g.c.content }}</p>
               <p class="rt-meta" style="margin: 4px 0 0" :style="g.c.completed_at ? 'color: var(--rt-green)' : ''">
-                {{ g.c.completed_at ? '已申报完成，等另一边一起结算' : '还没做' }}
+                {{ g.c.completed_at ? '已完成，等另一边一起结算' : '还没做' }}
               </p>
               <div class="rt-actrow">
                 <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy"
@@ -376,7 +376,7 @@ async function onConcede(n: GameNode, tip: string) {
 </template>
 
 <style scoped>
-.rt-cards { display: flex; flex-direction: column; gap: 12px; }
+.rt-cards { display: flex; flex-direction: column; gap: 12px;}
 
 /* ---------- 复合体 ---------- */
 
