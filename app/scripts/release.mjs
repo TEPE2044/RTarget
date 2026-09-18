@@ -19,7 +19,7 @@
  */
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import AdmZip from 'adm-zip'
@@ -64,6 +64,24 @@ mkdirSync(outDir, { recursive: true })
 const zipPath = join(outDir, zipName)
 zip.writeZip(zipPath)
 
+// 只留最新一版：旧的 dist-*.zip 一并清掉（latest.json 只有一个，直接覆盖）。
+//
+// 文件名**必须带版本号**，不能图省事改成固定的 dist.zip —— zip 的 URL 一旦固定，
+// Cloudflare 就会缓存它，用户可能下到旧代码（latest.json 那边是靠 ?t= 时间戳绕的，
+// 但 zip 是给插件直接下的，不好这么干）。所以是"带版本号 + 清旧的"，不是"固定名"。
+//
+// 删不掉也不该挡住发布（本机的安全删除垫片可能拦），失败只警告。
+const stale = readdirSync(outDir).filter(
+  (f) => f.startsWith('dist-') && f.endsWith('.zip') && f !== zipName
+)
+for (const f of stale) {
+  try {
+    unlinkSync(join(outDir, f))
+  } catch {
+    console.warn(`  ⚠ 旧包没删掉（大概被安全删除垫片拦了）：${f}`)
+  }
+}
+
 const zipBuf = readFileSync(zipPath)
 const checksum = createHash('sha256').update(zipBuf).digest('hex')
 const sizeMb = (zipBuf.length / 1024 / 1024).toFixed(2)
@@ -84,6 +102,9 @@ console.log(`✓ 版本 ${version}`)
 console.log(`  release/${zipName}   ${sizeMb} MB`)
 console.log(`  release/latest.json`)
 console.log(`  sha256 ${checksum.slice(0, 16)}…`)
+if (stale.length) {
+  console.log(`  （已清掉 ${stale.length} 个旧包，release/ 里只留最新一份）`)
+}
 console.log('')
 if (!base) {
   console.log('⚠ app/.env.local 里没配 VITE_UPDATE_BASE —— latest.json 里的 url 是个占位符，')
