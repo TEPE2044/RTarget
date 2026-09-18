@@ -163,8 +163,33 @@ async function refresh() {
   }
 }
 
+/**
+ * 到点自动结算。
+ *
+ * 结算是惰性的（只在 refresh 里跑），而界面上的"已超时"是按当前时间实时算出来的 ——
+ * 应用开着跨过死线时，界面已经显示"已超时"，库里却还是 active。
+ * 那个中间态既是漏洞（还能点完成、白拿奖励），也让人看不懂。
+ * 所以一发现有节点刚过期就立刻结算一次，让卡片自己变成"已判负 + 惩罚复合体"。
+ *
+ * 30 秒内最多触发一次：万一下次结算没能把它收口，也不至于每秒发一个请求。
+ */
+let lastAutoSettle = 0
+function autoSettleIfExpired() {
+  if (busy.value) return
+  if (Date.now() - lastAutoSettle < 30_000) return
+  const hit = allNodes.value.some(
+    (n) => n.status === 'active' && !n.completed_at && new Date(n.due_at) <= now.value
+  )
+  if (!hit) return
+  lastAutoSettle = Date.now()
+  void refresh() // refresh 自己处理错误，这里不等它
+}
+
 onMounted(() => {
-  timer = setInterval(() => (now.value = new Date()), 1000) // 顶栏时钟走秒
+  timer = setInterval(() => {
+    now.value = new Date() // 顶栏时钟走秒
+    autoSettleIfExpired() // 死线跨过去了就立刻结算，不停在"已超时但还能点"
+  }, 1000)
 
   // 只有装进壳里才生效，浏览器上是空操作
   registerBackButton({

@@ -79,6 +79,12 @@ const nodes: GameNode[] = [
     id: 'c5', kind: 'C', parent_id: 'a5', content: '把旧简历全删掉',
     tier: 'mid', stake: 10, status: 'bound', due_at: at(-2),
   }),
+
+  // 已过死线、但还没结算 —— 惰性结算留下的中间态。
+  // 用来验"完成按钮必须消失，只剩一个『已过死线』"
+  mk({ id: 'a6', kind: 'A', content: '把论文初稿写完', due_at: atHM(-1, 9) }),
+  mk({ id: 'b6', kind: 'B', parent_id: 'a6', content: '去吃一顿好的', status: 'bound', due_at: atHM(-1, 9) }),
+  mk({ id: 'c6', kind: 'C', parent_id: 'a6', content: '把书桌彻底整理一遍', status: 'bound', due_at: atHM(2, 9) }),
 ]
 
 const openArchives = ['2026 秋招冲刺', '体重管理', '读书计划']
@@ -198,7 +204,7 @@ function toggle() {
   applyTheme()
 }
 
-const openNodes = computed(() => nodes.filter((n) => ['a1', 'a2', 'a3', 'b1', 'b2', 'b3', 'c1', 'c2', 'c3'].includes(n.id)))
+const openNodes = computed(() => nodes.filter((n) => ['a1', 'a2', 'a3', 'a6', 'b1', 'b2', 'b3', 'b6', 'c1', 'c2', 'c3', 'c6'].includes(n.id)))
 const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 'c4', 'c5'].includes(n.id)))
 </script>
 

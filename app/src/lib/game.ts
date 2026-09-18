@@ -345,6 +345,17 @@ export async function completeNode(nodeId: string) {
   if (n.completed_at) return
   if (n.status === 'settled' && n.compound_a_done !== null) return
 
+  // 死线是「到点即判负」—— 过了就不能再申报。
+  //
+  // 为什么必须有这条：结算是**惰性**的（只在 refresh 时跑），而界面上的"已超时"
+  // 是按当前时间实时算的。应用开着跨过死线时，界面已经显示"已超时"，库里却还是
+  // active —— 这时点一下"完成"，A 会被当成按时完成、B 跟着解锁加分，等于白拿奖励。
+  //
+  // B 不受这条约束：它无时限，due_at 只是继承 A 做展示。
+  if (n.kind !== 'B' && n.status === 'active' && new Date(n.due_at) <= new Date()) {
+    throw new Error('已经过了死线，这一条已判负 —— 刷新后会进入惩罚复合体')
+  }
+
   // B：确认享受完毕（分早已到账，这里只是记账标记，无时限）
   if (n.kind === 'B' && n.status === 'active') {
     const { error } = await supabase
@@ -400,6 +411,21 @@ export async function completeNode(nodeId: string) {
 
     await settleAll()
     return
+  }
+
+  // A 补做（已判负、复合体还没结算）：C 的窗口一过就不能再补。
+  // 否则"事后点一下"就能把已经判负的账全额要回来，同样是白拿分。
+  // （C 自己的时限由上面那条统一守卫管，这里只管 A 的补做路径。）
+  if (n.kind === 'A') {
+    const { data: cn } = await supabase
+      .from('nodes')
+      .select('due_at')
+      .eq('parent_id', n.id)
+      .eq('kind', 'C')
+      .maybeSingle()
+    if (cn && new Date((cn as { due_at: string }).due_at) <= new Date()) {
+      throw new Error('惩罚 C 的补做窗口已经关闭 —— 刷新后会按复合体结算')
+    }
   }
 
   // A 复合体补完 / C 完成：只记完成时间，结算交给 settleAll
