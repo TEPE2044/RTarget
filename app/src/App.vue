@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { theme as antdTheme, message } from 'ant-design-vue'
-import { isAuthError, useAuth } from './lib/auth'
+import {
+  friendlyError, isAuthError, isClockSkewError, isNetworkError, useAuth,
+} from './lib/auth'
 import { registerBackButton, onAppResume, syncSystemBars } from './lib/native'
 import {
   applyUpdate, checkForUpdate, currentVersion, fetchLatest, isNative, isUpdateConfigured,
@@ -39,6 +41,14 @@ const wishes = ref<Wish[]>([])
 const todos = ref<Todo[]>([])
 const sealSums = ref<Record<string, number>>({})
 const busy = ref(false)
+/**
+ * 这次刷新没成功的原因（空串 = 一切正常）。
+ *
+ * 为什么要有它：拉数据失败时，界面会照旧渲染 —— 于是活力值显示 0、列表全空，
+ * 看起来就像"我的数据没了"。只弹一个会自动消失的 toast 兜不住这种误解，
+ * 所以首页留一条**可点重试**的横幅，一直挂到拉成功为止。
+ */
+const loadFail = ref('')
 const now = ref(new Date())
 
 type PageKey = 'home' | 'running' | 'todo' | 'wish' | 'history'
@@ -182,16 +192,36 @@ function archiveName(id: string): string {
 
 /**
  * 统一错误上报。
- * 关键点：登录态失效（账号被删 / token 过期）不能只弹个 toast 了事 ——
- * 那时界面还挂在登录态上、数据全空，用户只会以为"坏了"。必须踢回登录页。
+ *
+ * 必须把三类分开，否则就会出现"莫名其妙"的体验：
+ * - **网络不通**（Failed to fetch）：请求压根没出去，会话好好的 → 只提示、可重试，**不登出**。
+ *   以前这里会把它当普通错误弹英文原文，而 validateSession 那边更狠 —— 直接登出。
+ * - **Supabase 时钟漂移**（PGRST303 / JWT issued at future）：平台侧的，
+ *   Auth 和 PostgREST 两台机器没对上表 → **重新登录也没用**，绝不能登出。
+ * - **真的登录失效**：才踢回登录页。
+ *
+ * 前两类都在首页留一条可点的"没加载出来"横幅，而不是只弹一个会消失的 toast ——
+ * 数据没取到的时候，界面上那些 0 和空列表会被当成"我的数据没了"。
  */
 async function reportError(e: unknown, prefix = '') {
+  if (isNetworkError(e)) {
+    loadFail.value = '连不上服务器。检查下网络，然后点这里重试'
+    message.warning('连不上服务器 —— 是网络的问题，你的数据没事')
+    return
+  }
+  if (isClockSkewError(e)) {
+    loadFail.value = 'Supabase 的服务器时钟飘了（平台侧的问题），等一两分钟点这里重试'
+    message.warning('Supabase 的服务器时钟没对上，等一两分钟就好 —— 不是你操作的问题')
+    return
+  }
   if (isAuthError(e)) {
+    loadFail.value = ''
     await forceSignOut()
     message.warning('登录状态已失效，请重新登录')
     return
   }
-  message.error(prefix + (e as Error).message)
+  loadFail.value = ''
+  message.error(prefix + friendlyError(e))
 }
 
 // ---------- 数据刷新 ----------
@@ -199,29 +229,58 @@ async function reportError(e: unknown, prefix = '') {
 async function refresh() {
   busy.value = true
   try {
-    await settleAll() // 惰性结算：把到点的账先结掉
-    const [v, l, as, ns, sums, ws, ts] = await Promise.all([
-      getVitality(), getLedger(100), getArchives(), getAllNodes(), getArchiveLedgerSums(),
-      getWishes(), getTodos(),
-    ])
-    vitality.value = v
-    ledger.value = l
-    archives.value = as
-    allNodes.value = ns
-    sealSums.value = sums
-    wishes.value = ws
-    todos.value = ts
-
-    if (!activeArchiveId.value || !as.some((a) => a.id === activeArchiveId.value)) {
-      activeArchiveId.value = as.find((a) => a.status === 'open')?.id ?? null
+    try {
+      await loadAll()
+    } catch (e) {
+      // 网络抖动是最常见的一类失败（手机信号、切 Wi-Fi、Supabase 抖一下）。
+      // 隔一秒自动重来一次，大多数时候用户根本不会看到报错。
+      // **只对网络错误重试**：时钟漂移重试多少次都一样（官方说明每次刷新的 token
+      // 依然是未来 iat），别白打服务端。
+      if (!isNetworkError(e)) throw e
+      await new Promise((r) => setTimeout(r, 1200))
+      await loadAll()
     }
-    if (!historyArchiveId.value) {
-      historyArchiveId.value = as.find((a) => a.status === 'sealed')?.id ?? activeArchiveId.value
-    }
+    loadFail.value = ''
   } catch (e) {
     await reportError(e, '加载失败：')
+    // 时钟漂移属于"等一会儿自己就好"：PostgREST 的时钟追上来之后，**同一个 token
+    // 就能过**（不用重新登录）。所以一分钟后自动再试一次 —— 只试一次，不循环：
+    // 平台侧的问题狂重试只会白打服务端。
+    if (isClockSkewError(e)) scheduleSkewRetry()
   } finally {
     busy.value = false
+  }
+}
+
+let skewRetryTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleSkewRetry() {
+  if (skewRetryTimer) return
+  skewRetryTimer = setTimeout(() => {
+    skewRetryTimer = null
+    if (loadFail.value) void refresh() // 期间别的地方救回来了就不用再试
+  }, 60_000)
+}
+
+/** 真正拉数据的那一堆请求（refresh 的重试逻辑包在它外面） */
+async function loadAll() {
+  await settleAll() // 惰性结算：把到点的账先结掉
+  const [v, l, as, ns, sums, ws, ts] = await Promise.all([
+    getVitality(), getLedger(100), getArchives(), getAllNodes(), getArchiveLedgerSums(),
+    getWishes(), getTodos(),
+  ])
+  vitality.value = v
+  ledger.value = l
+  archives.value = as
+  allNodes.value = ns
+  sealSums.value = sums
+  wishes.value = ws
+  todos.value = ts
+
+  if (!activeArchiveId.value || !as.some((a) => a.id === activeArchiveId.value)) {
+    activeArchiveId.value = as.find((a) => a.status === 'open')?.id ?? null
+  }
+  if (!historyArchiveId.value) {
+    historyArchiveId.value = as.find((a) => a.status === 'sealed')?.id ?? activeArchiveId.value
   }
 }
 
@@ -274,6 +333,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  if (skewRetryTimer) clearTimeout(skewRetryTimer)
   stopResume?.()
 })
 
@@ -766,6 +826,24 @@ function archiveGoalCount(id: string): number {
 
         <!-- ==================== 首页 ==================== -->
         <section v-if="page === 'home'">
+          <!-- 数据没拉到：可点重试，一直挂到拉成功为止。
+               排在最前面，因为它最严重 —— 拉失败时界面上的 0 和空列表
+               会被当成"我的数据没了"，只弹一个会消失的 toast 兜不住这种误解。 -->
+          <button v-if="loadFail" class="rt-alert rt-alert-bad" :disabled="busy" @click="refresh()">
+            <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="8.6" />
+              <path d="M12 7.6v5.2M12 16.2h.01" />
+            </svg>
+            <span class="rt-alert-tx">
+              <span class="rt-t14s">没加载出来</span>
+              <span class="rt-meta rt-alert-sub">{{ loadFail }}</span>
+            </span>
+            <span class="rt-meta rt-push" style="white-space: nowrap">
+              {{ busy ? '重试中…' : '重试 →' }}
+            </span>
+          </button>
+
           <!-- 有新版：打开应用时自检发现的。点一下直接装（装完页面会立刻重载，
                横幅随之消失）。放在临期提醒上面 —— 它是"这次才出现"的一次性提示，
                不压住就没人看得到；临期那条是常驻的，每天都在这儿。 -->

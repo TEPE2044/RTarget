@@ -59,6 +59,10 @@ export function friendlyError(e: unknown): string {
     [/user already registered/i, '这个邮箱已经注册过了，直接用密码登录，或走验证码重设密码'],
     [/password should be at least/i, '密码太短了（至少 6 位）'],
     [/unable to validate email|invalid format/i, '邮箱格式不对'],
+    [
+      /PGRST303|issued (at|in) (the )?future/i,
+      'Supabase 那边的服务器时钟飘了（平台侧的，不是你的问题），等一两分钟再试',
+    ],
     [/failed to fetch|network/i, '连不上服务，检查下网络'],
   ]
   for (const [re, zh] of map) if (re.test(raw)) return zh
@@ -97,25 +101,86 @@ supabase.auth.getSession().then(({ data }) => {
  * 主动校验登录态是否真的还有效。
  * 为什么需要它：账号被删除时本地 JWT 仍然"有效"，supabase 不会发任何事件，
  * 只有真正打到服务端的请求才会暴露问题。所以必须有人主动去问一次。
+ *
+ * ⚠️ **网络不通不等于登录失效**。这个函数跑在"页面重新可见"时，
+ * 手机信号抖一下、切个 Wi-Fi 就会触发；那时把人踢回登录页，
+ * 比"暂时没查到"难受得多（而且重登也一样连不上）。
+ * 所以网络类错误一律返回 true、保留会话 —— 宁可多留一个失效的会话
+ * （下次请求失败还会再问一遍），也别无故把用户登出。
  */
 async function validateSession(): Promise<boolean> {
   if (!session.value) return false
   try {
     const { data, error } = await supabase.auth.getUser()
-    if (error || !data.user) {
+    if (error) {
+      if (isNetworkError(error)) return true
+      await forceSignOut()
+      return false
+    }
+    if (!data.user) {
       await forceSignOut()
       return false
     }
     return true
-  } catch {
+  } catch (e) {
+    if (isNetworkError(e)) return true
     await forceSignOut()
     return false
   }
 }
 
-/** 判断一个错误是不是"登录态失效"导致的 */
+/**
+ * 网络类错误：请求压根没发出去 / 没回来。
+ *
+ * 手机信号差、切 Wi-Fi、Supabase 被墙或抖，都是这一类，**跟登录态无关**。
+ * `AuthRetryableFetchError` 是 supabase-js 自己包的（它认得这是可重试的），
+ * 手动 fetch 那层则统一是 `Failed to fetch`（Chrome）/ `Load failed`（Safari）。
+ */
+export function isNetworkError(e: unknown): boolean {
+  if (!e) return false
+  const err = e as { status?: number; name?: string; message?: string }
+  if (err.name === 'AuthRetryableFetchError') return true
+  if (err.status === 0) return true
+  return /failed to fetch|fetch failed|networkerror|network request failed|load failed|network connection/i.test(
+    `${err.message ?? ''} ${String(e)}`
+  )
+}
+
+/**
+ * Supabase 平台侧的**时钟漂移**：PostgREST 报 `PGRST303 / JWT issued at future`。
+ *
+ * 成因（不是客户端的问题，也不是我们代码的 bug）：
+ * 签到 token 的是 Auth 服务，校验 token 的是 PostgREST —— **两台不同的机器**。
+ * 它们各自靠 NTP 对时，只要校验那台比签发那台慢 30 秒以上（PostgREST 的容忍窗口就是
+ * 30 秒，实测 +31 秒即拒），刚刷出来的 token 就会被判成"未来签发的"而拒掉。
+ * Supabase 官方 2026-08 一个月内出过三次同类事故，新加坡区域尤其常见。
+ *
+ * 两个关键推论（决定了怎么处理才对）：
+ * 1. **重新登录没用** —— 新签的 token 一样是未来 iat。所以绝不能把它当登录失效去登出。
+ * 2. **Auth 那边是好的**（`getUser()` 走的是 Auth 主机，会正常返回 200），
+ *    所以只有数据接口挂，登录态看起来完全正常 —— 这正是它"莫名其妙"的来源。
+ *
+ * 唯一的处置是**等**：PostgREST 的时钟追上来之后，**同一个 token 就能过**，
+ * 不需要重新登录、也不需要狂重试（重试只会白打服务端）。
+ */
+export function isClockSkewError(e: unknown): boolean {
+  if (!e) return false
+  const err = e as { code?: string; message?: string; details?: string; hint?: string }
+  const text = `${err.code ?? ''} ${err.message ?? ''} ${err.details ?? ''} ${err.hint ?? ''}`
+  return /PGRST303|issued (at|in) (the )?future/i.test(text)
+}
+
+/**
+ * 判断一个错误是不是"登录态真的失效了"。
+ *
+ * ⚠️ 网络类和时钟漂移类必须**先排掉**：
+ * 前者请求没发出去、后者是平台时钟问题，两者的本地会话都是好的。
+ * 尤其 PGRST303 会带 401 状态码，光看 status 会误判成登录失效 ——
+ * 而那会把人踢下线，且重新登录还会再撞一次，纯粹的恶性循环。
+ */
 export function isAuthError(e: unknown): boolean {
   if (!e) return false
+  if (isNetworkError(e) || isClockSkewError(e)) return false
   const err = e as { status?: number; code?: string; message?: string; error_description?: string }
   if (err.status === 401 || err.status === 403) return true
   const text = `${err.code ?? ''} ${err.message ?? ''} ${err.error_description ?? ''}`

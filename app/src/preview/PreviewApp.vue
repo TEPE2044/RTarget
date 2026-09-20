@@ -9,7 +9,7 @@ import type { GameNode, Wish, Todo } from '../lib/game'
 // dev-only 排版预览：真实组件 + 假数据，不连库。
 // 打开 http://localhost:5173/preview.html 看，构建时不会被打包。
 // tab 顺序与 App 的底部导航一致：0 首页 / 1 执行 / 2 待办 / 3 愿望 / 4 历史 / 5 表单
-// 另外支持 ?theme=light|dark、?sheet=1（设目标抽屉）、?more=1、?debug=1、?update=1。
+// 另外支持 ?theme=light|dark、?sheet=1（设目标抽屉）、?more=1、?debug=1、?update=1、?fail=1。
 // ?auth=login|code-email|code-verify|code-password 直接看登录那几步。
 
 const DAY = 86_400_000
@@ -262,6 +262,20 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
 
       <!-- 首页（tab=0） -->
       <template v-else-if="tab === 0">
+        <!-- 数据没拉到（真实那处在 App.vue）。?fail=1 才出现 -->
+        <button v-if="q.get('fail')" class="rt-alert rt-alert-bad">
+          <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8.6" />
+            <path d="M12 7.6v5.2M12 16.2h.01" />
+          </svg>
+          <span class="rt-alert-tx">
+            <span class="rt-t14s">没加载出来</span>
+            <span class="rt-meta rt-alert-sub">连不上服务器。检查下网络，然后点这里重试</span>
+          </span>
+          <span class="rt-meta rt-push" style="white-space: nowrap">重试 →</span>
+        </button>
+
         <!-- 有新版本（真实那处在 App.vue，这里手写一份看样式）。?update=1 才出现 -->
         <button v-if="q.get('update')" class="rt-alert rt-alert-up">
           <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"

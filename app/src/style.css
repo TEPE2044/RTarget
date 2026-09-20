@@ -326,6 +326,7 @@ body { background: var(--rt-bg); }
   cursor: pointer;
 }
 .rt-alert .rt-meta { color: var(--rt-amber); }
+.rt-alert > .rt-ico { flex: 0 0 auto; }
 .rt-alert-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rt-alert-sub {
   opacity: 0.85;
@@ -344,7 +345,16 @@ body { background: var(--rt-bg); }
 .rt-alert-up .rt-meta { color: var(--rt-blue); }
 /* 正在下载时整条不可点，给个"它忙着"的观感 */
 .rt-alert-up:disabled { opacity: 0.65; cursor: default; }
-.rt-alert-up .rt-ico { flex: 0 0 auto; }
+
+/* 「没加载出来」那条（网络断了 / Supabase 时钟漂移）。红色 —— 这是出错，
+   跟蓝色的"有新版"、琥珀色的"临期"三者要能一眼分开。 */
+.rt-alert-bad {
+  background: var(--rt-red-bg);
+  border-color: var(--rt-red);
+  color: var(--rt-red);
+}
+.rt-alert-bad .rt-meta { color: var(--rt-red); }
+.rt-alert-bad:disabled { opacity: 0.65; cursor: default; }
 .rt-cardwrap { display: flex; overflow: hidden; }
 .rt-rail { flex: 0 0 3px; align-self: stretch; }
 .rt-rail-blue { background: var(--rt-rail-blue); }
