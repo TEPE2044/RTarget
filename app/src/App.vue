@@ -562,11 +562,21 @@ const minDueLocal = ref(localDTStr())
 const showGoalForm = ref(false)
 
 /**
- * 惩罚 C 的死线只能是 A 死线之后的 1~3 天（需求）
- * 例：A = 8月1日 → C 只能取 8月2日 / 8月3日 / 8月4日
+ * 惩罚 C 的死线：**A 当天起 3 天内**，但必须**晚于 A 的死线**。
+ * 例：A = 8/1 18:00 → C 可取 8/1 19:00（当天）/ 8/2 / 8/3 / 8/4
+ *
+ * 为什么把「当天」也放开：补做窗口的长短本来就该由自己定 ——
+ * 早上 9 点的目标配当晚 22 点的补做，比"明天 9 点"更贴"今天必须做完"的意图。
+ *
+ * 为什么必须晚于 A（而不是只要求"晚于现在"）：C 是 A 判负**之后**才开启的惩罚。
+ * C 一旦早于 A，A 到点那一刻 C 就已经过期 —— 结算会在同一次调用里直接走完
+ * "都没完成"，复合体等于白设（0010 修的就是这个 bug）。
  */
-const PENALTY_OFFSETS = [1, 2, 3] as const
+const PENALTY_OFFSETS = [0, 1, 2, 3] as const
 type PenaltyOffset = (typeof PENALTY_OFFSETS)[number]
+
+/** 选「当天」时，C 至少要比 A 晚这么多分钟（不然等于没有补做窗口） */
+const SAME_DAY_GAP_MIN = 30
 
 const goalForm = ref({
   content: '',
@@ -641,6 +651,25 @@ const dueDatePart = computed(() => goalForm.value.dueAt.slice(0, 10))
 /** A 死线的时刻部分（HH:mm） */
 const dueTimePart = computed(() => goalForm.value.dueAt.slice(11, 16) || '23:59')
 
+/** 'HH:mm' → 分钟数（0~1439） */
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+/** 分钟数 → 'HH:mm' */
+function minutesToTime(mins: number): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`
+}
+
+/** A 死线落在一天的第几分钟 */
+const dueMinutes = computed(() => timeToMinutes(dueTimePart.value))
+/** 选「当天」时 C 最早能到几点（必须晚于 A） */
+const sameDayMinMinutes = computed(() => dueMinutes.value + SAME_DAY_GAP_MIN)
+/** A 太晚（23:29 之后）就没有比它更晚的当天时刻了 → 「当天」这个选项不出现 */
+const sameDayAvailable = computed(() => sameDayMinMinutes.value <= 1439)
+const sameDayMinText = computed(() => minutesToTime(sameDayMinMinutes.value))
+
 /**
  * C 的到期时刻。默认跟着 A 走 —— 这样补做窗口正好是整 1/2/3 天；
  * 用户一旦自己改过就不再跟随（否则改 A 会把他填的值冲掉）。
@@ -651,14 +680,49 @@ watch(dueTimePart, (t) => {
   if (!penaltyTimeTouched.value) penaltyTime.value = t
 })
 
-/** C 死线 = A 的日期 + 偏移天，时刻用上面那个（日期仍是硬约束，时刻自由） */
+/**
+ * 选「当天」时必须把时刻抬到 A 之后。
+ *
+ * 不靠"提交时报错"：那时用户已经把整张表填完了，被打回来很烦。
+ * 这里直接把输入框改掉 —— 他看得见，选项上的提示文字里也写着实际会用哪个时刻。
+ */
+watch([() => goalForm.value.penaltyOffset, dueTimePart], () => {
+  if (goalForm.value.penaltyOffset !== 0) return
+  if (!sameDayAvailable.value) {
+    goalForm.value.penaltyOffset = 3 // A 太晚，当天塞不下 → 退回默认
+    return
+  }
+  if (timeToMinutes(penaltyTime.value) > dueMinutes.value) return
+  penaltyTime.value = sameDayMinText.value
+})
+
+/**
+ * 真正会写进 C 的时刻。
+ * 正常情况跟 `penaltyTime` 一样（上面那个 watch 已经纠过偏）；
+ * 留着它是因为 watch 异步生效，**首帧**（刚打开表单还没有任何交互时）也要算对。
+ */
+const effectivePenaltyTime = computed(() => {
+  if (goalForm.value.penaltyOffset !== 0) return penaltyTime.value
+  if (!sameDayAvailable.value) return penaltyTime.value
+  return timeToMinutes(penaltyTime.value) <= dueMinutes.value
+    ? sameDayMinText.value
+    : penaltyTime.value
+})
+
+/** C 死线 = A 的日期 + 偏移天（0 = 当天）+ 时刻 */
 const penaltyDateTime = computed(
-  () => `${addDays(dueDatePart.value, goalForm.value.penaltyOffset)}T${penaltyTime.value}`
+  () => `${addDays(dueDatePart.value, goalForm.value.penaltyOffset)}T${effectivePenaltyTime.value}`
 )
 const penaltyOptions = computed(() =>
   PENALTY_OFFSETS.map((offset) => {
     const date = addDays(dueDatePart.value, offset)
-    return { offset, label: `后 ${offset} 天`, hint: `${shortDate(date)} ${penaltyTime.value}` }
+    const time = offset === 0 ? effectivePenaltyTime.value : penaltyTime.value
+    return {
+      offset,
+      label: offset === 0 ? '当天' : `后 ${offset} 天`,
+      hint: `${shortDate(date)} ${time}`,
+      disabled: offset === 0 && !sameDayAvailable.value,
+    }
   })
 )
 
@@ -717,6 +781,10 @@ async function addGoal() {
   if (!goalForm.value.penalty.content.trim()) return message.warning('惩罚 C 必填（一直拖延的事）')
   if (new Date(goalForm.value.dueAt) <= new Date()) {
     return message.warning('A 死线要晚于现在')
+  }
+  // 兜底：C 不晚于 A 的话，A 一到点 C 也过期了，复合体开出来就是死的
+  if (new Date(penaltyDateTime.value) <= new Date(goalForm.value.dueAt)) {
+    return message.warning('C 死线要晚于 A 的死线')
   }
   if (highTiersDisabled.value && (goalForm.value.tier === 'high' || goalForm.value.tier === 'allin')) {
     return message.warning('活力值为负，高档与 ALL IN 暂不可押')
@@ -1248,24 +1316,29 @@ function archiveGoalCount(id: string): number {
             <a-input v-model:value="goalForm.penalty.content" placeholder="如果没做成，被强制面对的事" />
           </a-form-item>
 
-          <a-form-item label="C 死线（日期在 A 之后 1~3 天内，时刻自定）">
+          <a-form-item label="C 死线（A 当天起 3 天内 · 必须晚于 A 的死线）">
             <div class="rt-seg">
               <button v-for="o in penaltyOptions" :key="o.offset" type="button" class="rt-segbtn"
                 :class="{ active: goalForm.penaltyOffset === o.offset }"
+                :disabled="o.disabled"
                 @click="goalForm.penaltyOffset = o.offset">
                 <span>{{ o.label }}</span>
                 <span class="rt-meta">{{ o.hint }}</span>
               </button>
             </div>
             <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px">
-              <span class="rt-meta">到期时刻</span>
+              <span class="rt-meta">C 到期时刻</span>
               <a-input v-model:value="penaltyTime" type="time" style="width: 140px"
+                :min="goalForm.penaltyOffset === 0 ? sameDayMinText : undefined"
                 @change="penaltyTimeTouched = true" />
             </div>
+            <p v-if="goalForm.penaltyOffset === 0" class="rt-meta" style="margin: 8px 0 0">
+              C 在 A 当天的话必须晚于 A 的死线（{{ dueTimePart }}），最早只能 {{ sameDayMinText }}
+            </p>
           </a-form-item>
           <p class="rt-meta" style="margin: -12px 0 16px">
             A 死线 {{ shortDate(dueDatePart) }} {{ dueTimePart }}（到点判负）· C 死线
-            {{ shortDate(penaltyDateTime) }} {{ penaltyTime }} —— 补做窗口 {{ windowText }}
+            {{ shortDate(penaltyDateTime) }} {{ effectivePenaltyTime }} —— 补做窗口 {{ windowText }}
           </p>
 
           <div class="rt-sheet-actions">

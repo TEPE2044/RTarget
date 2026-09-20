@@ -143,7 +143,7 @@ const authMode = ref<AuthStep | null>((q.get('auth') as AuthStep | null) ?? null
 
 // ---- 设目标表单的预览状态（死线精确到时刻；C 的日期在 A 之后 1~3 天、时刻自定）----
 const pDue = ref('2026-08-01T18:00')
-const pOffset = ref(3)
+const pOffset = ref(Number(q.get('pday') ?? 3))
 /** C 的到期时刻。默认跟 A 一致 → 补做窗口正好是整 1/2/3 天 */
 const pPenaltyTime = ref('18:00')
 /** 目标来源：?goal=free 切到「自己写」，默认演示"从目标单选" */
@@ -172,10 +172,11 @@ const shortD = (s: string) => {
 }
 const pDueDatePart = computed(() => pDue.value.slice(0, 10))
 const pOptions = computed(() =>
-  [1, 2, 3].map((o) => ({
+  [0, 1, 2, 3].map((o) => ({
     o,
+    label: o === 0 ? '当天' : `后 ${o} 天`,
     date: shift(pDueDatePart.value, o),
-    hint: `${shortD(shift(pDueDatePart.value, o))} ${pPenaltyTime.value}`,
+    hint: `${shortD(shift(pDueDatePart.value, o))} ${o === 0 ? '18:30' : pPenaltyTime.value}`,
   }))
 )
 const pPenaltyDate = computed(() => shift(pDueDatePart.value, pOffset.value))
@@ -570,18 +571,21 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
           <a-input placeholder="如果没做成，被强制面对的事" />
         </a-form-item>
 
-        <a-form-item label="C 死线（日期在 A 之后 1~3 天内，时刻自定）">
+        <a-form-item label="C 死线（A 当天起 3 天内 · 必须晚于 A 的死线）">
           <div class="rt-seg">
             <button v-for="o in pOptions" :key="o.o" type="button" class="rt-segbtn"
               :class="{ active: pOffset === o.o }" @click="pOffset = o.o">
-              <span>后 {{ o.o }} 天</span>
+              <span>{{ o.label }}</span>
               <span class="rt-meta">{{ o.hint }}</span>
             </button>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px">
-            <span class="rt-meta">到期时刻</span>
+            <span class="rt-meta">C 到期时刻</span>
             <a-input v-model:value="pPenaltyTime" type="time" style="width: 140px" />
           </div>
+          <p v-if="pOffset === 0" class="rt-meta" style="margin: 8px 0 0">
+            C 在 A 当天的话必须晚于 A 的死线（{{ pDue.slice(11, 16) }}），最早只能 18:30
+          </p>
         </a-form-item>
         <p class="rt-meta" style="margin: -12px 0 16px">
           A 死线 {{ shortD(pDue) }} {{ pDue.slice(11, 16) }}（到点判负）· C 死线

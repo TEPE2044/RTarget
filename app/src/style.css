@@ -466,6 +466,8 @@ body { background: var(--rt-bg); }
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 .rt-segbtn:active { opacity: 0.75; }
+/* 不可选的档（比如 A 太晚、当天塞不下补做窗口） */
+.rt-segbtn:disabled { opacity: 0.4; cursor: default; }
 .rt-segbtn.active {
   border-color: var(--rt-blue);
   background: var(--rt-blue-bg);
