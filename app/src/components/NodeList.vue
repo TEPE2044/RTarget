@@ -235,6 +235,8 @@ async function onConcede(n: GameNode, tip: string) {
                 <span class="rt-meta rt-push">{{ tierName[g.a.tier] }} · {{ g.a.stake }} 分（已扣）</span>
               </div>
               <p class="rt-t14" style="margin: 8px 0 0">{{ g.a.content }}</p>
+              <!-- 备忘录（从待办立项时带过来）：补做时正是要看的 -->
+              <p v-if="g.a.note" class="rt-meta rt-node-note">{{ g.a.note }}</p>
               <p class="rt-meta" style="margin: 4px 0 0" :style="g.a.completed_at ? 'color: var(--rt-green)' : ''">
                 {{ g.a.completed_at ? '已完成，等另一边一起结算' : '还没补做' }}
               </p>
@@ -286,6 +288,8 @@ async function onConcede(n: GameNode, tip: string) {
                 <span class="rt-flex1" :class="variant === 'open' ? 'rt-t14s' : 'rt-t14'">{{ g.a.content }}</span>
                 <span class="pill" :class="pillOf(g.a).cls">{{ pillOf(g.a).text }}</span>
               </div>
+              <!-- 备忘录：从待办立项时快照过来的 -->
+              <p v-if="g.a.note" class="rt-meta rt-node-note">{{ g.a.note }}</p>
               <div v-if="g.a.compound_a_done !== null" class="rt-line2">
                 <span class="rt-meta" style="color: var(--rt-amber)">复合体结算：{{ compoundVerdict(g.a) }}</span>
               </div>
@@ -376,6 +380,15 @@ async function onConcede(n: GameNode, tip: string) {
 </template>
 
 <style scoped>
+/* 备忘录（从待办带过来的）：左边一道竖线当引用样式，跟正文分开。多行照原样换行 */
+.rt-node-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--rt-line-strong);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .rt-cards { display: flex; flex-direction: column; gap: 12px;}
 
 /* ---------- 复合体 ---------- */

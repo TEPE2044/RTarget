@@ -34,6 +34,8 @@ export interface GameNode {
   wish_id: string | null
   /** 目标 A 来自目标单时有值；手输的目标为 null（0016） */
   todo_id: string | null
+  /** 备忘录：从待办立项时快照过来（只有 A 会有值，0018） */
+  note: string
 }
 
 // ---------- 目标单 ----------
@@ -50,6 +52,8 @@ export interface Todo {
   times_total: number
   /** 还剩几格。来源目标完成一次扣一格，扣到 0 就变成 done */
   times_left: number
+  /** 备忘录：这条待办要怎么做、有什么要记的（0018） */
+  note: string
   done_at: string | null
   taken_at: string | null
   created_at: string
@@ -165,7 +169,8 @@ export async function getArchives(): Promise<Archive[]> {
  *   这段就是惩罚复合体的补做窗口；B 无时限，due_at 沿用 A 的仅作展示
  * - 奖励 B 可以来自愿望单（reward.wishId），也可以是临时手输。
  *   目标 A 可以来自目标单（todoId），同样可以临时手输。
- *   content 始终写当时的文案快照 —— 清单里以后改了名，不影响已经立过的目标
+ *   content 始终写当时的文案快照 —— 清单里以后改了名，不影响已经立过的目标；
+ *   备注（note）同理，立项时从那条第待办快照过来
  */
 export async function createGoal(input: {
   archiveId: string
@@ -178,6 +183,8 @@ export async function createGoal(input: {
   vitality: number
   /** 目标 A 的来源；从目标单选的时候填，手输留空 */
   todoId?: string | null
+  /** 备忘录：从目标单立项时，把那条待办的备注**快照**过来（0018） */
+  note?: string | null
 }): Promise<string> {
   const user = await requireUser()
   // 活力值四舍五入取整（文档 v1.0：不要小数点）
@@ -210,6 +217,8 @@ export async function createGoal(input: {
       kind: 'A',
       content: input.content,
       todo_id: input.todoId ?? null,
+      // 备注快照：那条待办以后改了备注，也不影响已经立过的目标
+      note: input.note?.trim() ?? '',
       tier: input.tier,
       stake,
       due_at: input.dueAt,
@@ -637,11 +646,15 @@ export async function consumeTodoSlot(todoId: string | null) {
   if (error) throw error
 }
 
-export async function updateTodo(id: string, content: string) {
+/**
+ * 改待办的文案和备注。
+ * 两个都传：备注允许清空（传空串就是删掉备注），所以不能"只有非空才写"。
+ */
+export async function updateTodo(id: string, content: string, note = '') {
   await requireUser()
   const { error } = await supabase
     .from('todos')
-    .update({ content: content.trim() })
+    .update({ content: content.trim(), note: note.trim() })
     .eq('id', id)
   if (error) throw error
 }

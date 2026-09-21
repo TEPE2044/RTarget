@@ -30,16 +30,21 @@ const base: GameNode = {
   content: '', tier: 'low', stake: 5, due_at: at(1), status: 'active',
   created_at: new Date().toISOString(), completed_at: null,
   compound_a_done: null, compound_c_done: null, wish_id: null, todo_id: null,
+  note: '',
 }
 const mk = (o: Partial<GameNode>): GameNode => ({ ...base, ...o })
 
 const nodes: GameNode[] = [
-  mk({ id: 'a1', kind: 'A', content: '做完 660 题第三章', due_at: atHM(1, 18) }),
+  mk({
+    id: 'a1', kind: 'A', content: '做完 660 题第三章', due_at: atHM(1, 18),
+    note: '第三章 3.1~3.5，错题抄到笔记本第 12 页',
+  }),
   mk({ id: 'b1', kind: 'B', parent_id: 'a1', content: '看一集纪录片', status: 'bound', due_at: atHM(1, 18) }),
   mk({ id: 'c1', kind: 'C', parent_id: 'a1', content: '把堆着的快递盒清掉', status: 'bound', due_at: atHM(4, 9, 30) }),
 
   mk({
     id: 'a2', kind: 'A', content: '跑完半马训练计划', status: 'settled', due_at: at(-2),
+    note: '周三 5km + 周六 10km\n配速 6:30 左右就行',
   }),
   mk({ id: 'b2', kind: 'B', parent_id: 'a2', content: '买那个键盘', status: 'bound', due_at: at(-2) }),
   mk({
@@ -122,13 +127,14 @@ const wishes: Wish[] = [
 
 // times_* = 电量格（0017）。默认 1 = 一次性的；> 1 的才显示格子。
 // 这里 t2 / t4 故意留成多次，用来看格子在不同数量下的样子。
+// note = 备忘录（0018）：t1 / t2 故意写了（t2 还是多行的），看有没有备注时的观感差异。
 const todos: Todo[] = [
-  { id: 't1', user_id: 'u1', content: '把书桌彻底收拾一遍', status: 'open', times_total: 1, times_left: 1, done_at: null, taken_at: null, created_at: at(-7) },
-  { id: 't2', user_id: 'u1', content: '跑三次 5 公里', status: 'open', times_total: 3, times_left: 2, done_at: null, taken_at: null, created_at: at(-5) },
-  { id: 't3', user_id: 'u1', content: '把简历模板重写一遍', status: 'open', times_total: 1, times_left: 1, done_at: null, taken_at: null, created_at: at(-3) },
-  { id: 't4', user_id: 'u1', content: '给爸妈打电话', status: 'open', times_total: 6, times_left: 5, done_at: null, taken_at: null, created_at: at(-2) },
-  { id: 't5', user_id: 'u1', content: '整理作品集文件夹', status: 'done', times_total: 1, times_left: 0, done_at: at(-1), taken_at: null, created_at: at(-9) },
-  { id: 't6', user_id: 'u1', content: '退掉不用的订阅', status: 'done', times_total: 1, times_left: 0, done_at: at(-4), taken_at: null, created_at: at(-12) },
+  { id: 't1', user_id: 'u1', content: '把书桌彻底收拾一遍', status: 'open', times_total: 1, times_left: 1, note: '抽屉里那堆旧票据一起扔掉', done_at: null, taken_at: null, created_at: at(-7) },
+  { id: 't2', user_id: 'u1', content: '跑三次 5 公里', status: 'open', times_total: 3, times_left: 2, note: '周中两次 + 周末一次\n配速别冲，能正常说话就行', done_at: null, taken_at: null, created_at: at(-5) },
+  { id: 't3', user_id: 'u1', content: '把简历模板重写一遍', status: 'open', times_total: 1, times_left: 1, note: '', done_at: null, taken_at: null, created_at: at(-3) },
+  { id: 't4', user_id: 'u1', content: '给爸妈打电话', status: 'open', times_total: 6, times_left: 5, note: '', done_at: null, taken_at: null, created_at: at(-2) },
+  { id: 't5', user_id: 'u1', content: '整理作品集文件夹', status: 'done', times_total: 1, times_left: 0, note: '按项目分文件夹了', done_at: at(-1), taken_at: null, created_at: at(-9) },
+  { id: 't6', user_id: 'u1', content: '退掉不用的订阅', status: 'done', times_total: 1, times_left: 0, note: '', done_at: at(-4), taken_at: null, created_at: at(-12) },
 ]
 
 // tab 顺序与 App 的底部导航一致：0 首页 / 1 待办 / 2 执行 / 3 愿望 / 4 历史 / 5 设目标表单

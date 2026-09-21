@@ -812,6 +812,8 @@ async function addGoal() {
       vitality: vitality.value,
       // 立项成功的话，createGoal 会把这条待办移出清单（taken）
       todoId: goalSource.value === 'todo' ? goalForm.value.todoId || null : null,
+      // 备注快照：待办一立项就从目标单消失，备注不跟过去就再也看不到了
+      note: goalSource.value === 'todo' ? selectedTodo.value?.note ?? '' : '',
     })
     message.success('已押注设立，到点未申报即判负')
     showGoalForm.value = false
@@ -1260,6 +1262,9 @@ function archiveGoalCount(id: string): number {
           </a-form-item>
           <p v-if="goalSource === 'todo' && selectedTodo" class="rt-meta" style="margin: -14px 0 12px">
             立项后这条会从目标单移出，事情就进「执行」页了。
+            <template v-if="selectedTodo.note">
+              <br />它的备忘录会一起带过去：{{ selectedTodo.note }}
+            </template>
           </p>
 
           <a-form-item label="档位">

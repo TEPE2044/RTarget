@@ -25,6 +25,8 @@ const draft = ref('')
 const draftTimes = ref(1)
 const editingId = ref<string | null>(null)
 const editingText = ref('')
+/** 编辑中的备忘录。跟文案一起存，所以清空就是删掉备注（不是"不改"） */
+const editingNote = ref('')
 
 const openTodos = computed(() => props.todos.filter((t) => t.status === 'open'))
 const doneTodos = computed(() => props.todos.filter((t) => t.status === 'done'))
@@ -58,11 +60,13 @@ function onAdd() {
 function startEdit(t: Todo) {
   editingId.value = t.id
   editingText.value = t.content
+  editingNote.value = t.note ?? ''
 }
 
 function cancelEdit() {
   editingId.value = null
   editingText.value = ''
+  editingNote.value = ''
 }
 
 function saveEdit() {
@@ -70,7 +74,7 @@ function saveEdit() {
   const text = editingText.value.trim()
   if (!text) return cancelEdit()
   return act(async () => {
-    await updateTodo(editingId.value!, text)
+    await updateTodo(editingId.value!, text, editingNote.value)
     cancelEdit()
     emit('refresh')
   })
@@ -143,11 +147,16 @@ function dateText(iso: string | null): string {
       <div v-for="t in openTodos" :key="t.id" class="rt-card rt-cardwrap">
         <div class="rt-rail rt-rail-blue"></div>
         <div class="rt-node-body rt-pad">
-          <div v-if="editingId === t.id" class="rt-line1" style="flex-wrap: nowrap">
-            <a-input v-model:value="editingText" size="small" :disabled="busy"
-              @keyup.enter="saveEdit()" @keyup.esc="cancelEdit()" />
-            <button class="rbtn" :disabled="busy" @click="saveEdit()">✓</button>
-            <button class="rbtn" @click="cancelEdit()">✕</button>
+          <div v-if="editingId === t.id" style="display: flex; flex-direction: column; gap: 8px">
+            <div class="rt-line1" style="flex-wrap: nowrap">
+              <a-input v-model:value="editingText" size="small" :disabled="busy"
+                @keyup.enter="saveEdit()" @keyup.esc="cancelEdit()" />
+              <button class="rbtn" :disabled="busy" @click="saveEdit()">✓</button>
+              <button class="rbtn" @click="cancelEdit()">✕</button>
+            </div>
+            <!-- 备忘录跟文案一起存（清空 = 删掉备注，不是"不改"） -->
+            <a-textarea v-model:value="editingNote" :rows="2" :disabled="busy"
+              placeholder="备忘录（可选）：要怎么做、要注意什么" />
           </div>
 
           <div v-else>
@@ -178,6 +187,8 @@ function dateText(iso: string | null): string {
               </span>
               <span class="rt-meta">还剩 {{ t.times_left }} / {{ t.times_total }} 次</span>
             </div>
+            <!-- 备忘录：有才显示。左边一道竖线当引用样式，跟正文分开 -->
+            <p v-if="t.note" class="rt-meta rt-todo-note">{{ t.note }}</p>
           </div>
         </div>
       </div>
@@ -220,6 +231,7 @@ function dateText(iso: string | null): string {
           <p class="rt-meta" style="margin: 2px 0 0">
             {{ dateText(t.done_at) }} 勾掉<span v-if="t.times_total > 1"> · 共 {{ t.times_total }} 次</span>
           </p>
+          <p v-if="t.note" class="rt-meta rt-todo-note">{{ t.note }}</p>
         </div>
       </div>
     </div>
@@ -229,6 +241,15 @@ function dateText(iso: string | null): string {
 <style scoped>
 .rt-todo-tx { white-space: normal; word-break: break-word; }
 .rt-todo-done { color: var(--rt-tx3); text-decoration: line-through; white-space: normal; word-break: break-word; }
+
+/* 备忘录：左边一道竖线当引用样式，跟正文分开。多行的照原样换行 */
+.rt-todo-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--rt-line-strong);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* 新建时的次数输入：只要个数字，不要上下箭头（手机上很难点）。
    宽度算上 × 那个 addon。 */
