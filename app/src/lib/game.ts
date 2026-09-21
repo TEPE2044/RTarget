@@ -161,7 +161,7 @@ export async function getArchives(): Promise<Archive[]> {
  * 设立目标：A + 预绑 B + 预绑 C，三节点原子写入
  * - 档位继承：B/C 无独立档位，分值 = A 的档位分值（ALL IN 同样继承快照）
  * - 死线各自独立，且**都是具体时刻**（v1.4）：A 用 dueAt，到点即判负；
- *   C 用 penaltyDueAt，**日期**只能落在 A 之后的 1~3 天（时刻自定），
+ *   C 用 penaltyDueAt，**日期**在 A 当天起 3 天内、**时刻必须晚于 A**，
  *   这段就是惩罚复合体的补做窗口；B 无时限，due_at 沿用 A 的仅作展示
  * - 奖励 B 可以来自愿望单（reward.wishId），也可以是临时手输。
  *   目标 A 可以来自目标单（todoId），同样可以临时手输。
@@ -183,17 +183,20 @@ export async function createGoal(input: {
   // 活力值四舍五入取整（文档 v1.0：不要小数点）
   const stake = input.tier === 'allin' ? Math.round(input.vitality * 0.8) : TIER_STAKE[input.tier]!
 
-  // C 的**日期**必须落在 A 日期的后 1~3 天（时刻自由），补做窗口最长 3 天。
+  // C 的**日期**只能落在 A 当天起 3 天内（v1.6 放宽；此前是"A 之后 1~3 天"），
+  // 且**必须晚于 A 的死线** —— 下半段那个 cAt <= aAt 就是这条，不能省：
+  // C 早于 A 的话，A 一到点 C 也已经过期，复合体开出来就是死的（0010 修过的 bug）。
   //
-  // 这里必须按「日期」算，不能拿毫秒差除以一天：
+  // 日期按「日历天」算，不能拿毫秒差除以一天：
   // A = 8/1 23:00、C = 8/2 01:00 的毫秒差只有 0.08 天，
-  // 四舍五入成 0 天，会被误判成"不在 1~3 天内"直接拦掉。
+  // 四舍五入成 0 天，会被误判成"不在 0~3 天内"直接拦掉。
   const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
   const aAt = new Date(input.dueAt)
   const cAt = new Date(input.penaltyDueAt)
   const gapDays = Math.round((dayStart(cAt) - dayStart(aAt)) / 86_400_000)
-  if (gapDays < 1 || gapDays > 3) {
-    throw new Error('惩罚 C 的日期只能落在 A 死线之后的 1~3 天内')
+  // 0 = 当天（这时必须配一个晚于 A 的时刻，由下面那句兜住）
+  if (gapDays < 0 || gapDays > 3) {
+    throw new Error('惩罚 C 的日期只能是 A 当天起 3 天内')
   }
   if (cAt <= aAt) {
     throw new Error('惩罚 C 的到期时刻必须晚于 A 死线')

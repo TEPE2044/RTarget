@@ -141,7 +141,7 @@ const theme = ref<'light' | 'dark'>(q.get('theme') === 'dark' ? 'dark' : 'light'
 type AuthStep = 'login' | 'code-email' | 'code-verify' | 'code-password'
 const authMode = ref<AuthStep | null>((q.get('auth') as AuthStep | null) ?? null)
 
-// ---- 设目标表单的预览状态（死线精确到时刻；C 的日期在 A 之后 1~3 天、时刻自定）----
+// ---- 设目标表单的预览状态（死线精确到时刻；C 的日期在 A 当天起 3 天内、必须晚于 A）----
 const pDue = ref('2026-08-01T18:00')
 const pOffset = ref(Number(q.get('pday') ?? 3))
 /** C 的到期时刻。默认跟 A 一致 → 补做窗口正好是整 1/2/3 天 */
