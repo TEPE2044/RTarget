@@ -154,8 +154,11 @@ function dateText(iso: string | null): string {
               <button class="rbtn" :disabled="busy" @click="saveEdit()">✓</button>
               <button class="rbtn" @click="cancelEdit()">✕</button>
             </div>
-            <!-- 备忘录跟文案一起存（清空 = 删掉备注，不是"不改"） -->
-            <a-textarea v-model:value="editingNote" :rows="2" :disabled="busy"
+            <!-- 备忘录跟文案一起存（清空 = 删掉备注，不是"不改"）。
+                 auto-size 让它随内容长高 —— 手机上固定 rows 的框一写多行就只剩内部
+                 滚动，看不出下面还有字。 -->
+            <a-textarea v-model:value="editingNote" class="rt-note-in"
+              :auto-size="{ minRows: 3, maxRows: 8 }" :disabled="busy"
               placeholder="备忘录（可选）：要怎么做、要注意什么" />
           </div>
 
@@ -241,6 +244,14 @@ function dateText(iso: string | null): string {
 <style scoped>
 .rt-todo-tx { white-space: normal; word-break: break-word; }
 .rt-todo-done { color: var(--rt-tx3); text-decoration: line-through; white-space: normal; word-break: break-word; }
+
+/* 备忘录输入框。手机上一定要给足高度 —— antd 只按 rows/auto-size 算，
+   窄屏 + 系统大字号下会挤成一行，而且固定高度的话写多行只是内部滚动，
+   完全看不出下面还有内容。auto-size 负责"随内容长高"，min-height 是兜底。 */
+.rt-note-in :deep(textarea) {
+  min-height: 66px;
+  line-height: 1.6;
+}
 
 /* 备忘录：左边一道竖线当引用样式，跟正文分开。多行的照原样换行 */
 .rt-todo-note {

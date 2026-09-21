@@ -129,7 +129,7 @@ const wishes: Wish[] = [
 // 这里 t2 / t4 故意留成多次，用来看格子在不同数量下的样子。
 // note = 备忘录（0018）：t1 / t2 故意写了（t2 还是多行的），看有没有备注时的观感差异。
 const todos: Todo[] = [
-  { id: 't1', user_id: 'u1', content: '把书桌彻底收拾一遍', status: 'open', times_total: 1, times_left: 1, note: '抽屉里那堆旧票据一起扔掉', done_at: null, taken_at: null, created_at: at(-7) },
+  { id: 't1', user_id: 'u1', content: '把书桌彻底收拾一遍', status: 'open', times_total: 1, times_left: 1, note: '抽屉里那堆旧票据一起扔掉\n顺手把过期的保修卡也翻出来\n（拍照存手机里再扔）\n第二格抽屉里有根坏的充电线\n书立也换掉', done_at: null, taken_at: null, created_at: at(-7) },
   { id: 't2', user_id: 'u1', content: '跑三次 5 公里', status: 'open', times_total: 3, times_left: 2, note: '周中两次 + 周末一次\n配速别冲，能正常说话就行', done_at: null, taken_at: null, created_at: at(-5) },
   { id: 't3', user_id: 'u1', content: '把简历模板重写一遍', status: 'open', times_total: 1, times_left: 1, note: '', done_at: null, taken_at: null, created_at: at(-3) },
   { id: 't4', user_id: 'u1', content: '给爸妈打电话', status: 'open', times_total: 6, times_left: 5, note: '', done_at: null, taken_at: null, created_at: at(-2) },
