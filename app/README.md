@@ -1,6 +1,9 @@
 # RTarget 前端 + Capacitor 套壳
 
-机制文档在 `../docs/mechanism.md`，数据库迁移在 `../supabase/`。
+**仓库总览在 [`../README.md`](../README.md)**（项目是什么、怎么跑、发版、文档地图）。
+机制文档在 [`../docs/mechanism.md`](../docs/mechanism.md)，数据库迁移在 `../supabase/`。
+
+这份文件是**前端与套壳的实现细节**：界面约定、打包、OTA、登录实现、踩过的坑。
 
 ## 浏览器开发
 
