@@ -346,6 +346,32 @@ export function findSealPenalty(ledger: LedgerEntry[], archiveId: string): numbe
  * - B active 时点击 → 立刻 +B 分（流水 b_completed）
  * 完成后调用 settleAll 推进复合体结算（若条件满足）
  */
+/**
+ * 认领一个节点：把它推进到终态，**只有真的抢到才返回 true**。
+ *
+ * ⚠️ 这是本文件里最重要的一道防护，别改回"先 SELECT 判断、再无条件 UPDATE"。
+ *
+ * 那种写法是 check-then-act：连点两下时两个请求都会读到 `status='active'`、
+ * 都通过内存里的守卫，然后**各插一条流水** —— 分就多加了一份。
+ * （Jackie 报的「完成按钮没有防抖，点多几次就能获得更多分数」就是这个。）
+ *
+ * 条件更新只是**一条 SQL**：Postgres 的行锁保证并发时只有一个能匹配到
+ * `status='active'`；第二个请求等锁后重新评估 WHERE，发现状态已经变了 → 影响 0 行。
+ * 所以这道防护是**数据库层**的，不依赖前端的按钮禁用 ——
+ * 前端的禁用只能减少误触，挡不住重试、双开、慢网络下的重复提交。
+ */
+async function claimNode(nodeId: string, patch: Record<string, unknown> = {}) {
+  const { data, error } = await supabase
+    .from('nodes')
+    .update({ status: 'settled', completed_at: new Date().toISOString(), ...patch })
+    .eq('id', nodeId)
+    .eq('status', 'active')
+    .is('completed_at', null)
+    .select('id')
+  if (error) throw error
+  return (data?.length ?? 0) > 0
+}
+
 export async function completeNode(nodeId: string) {
   await requireUser() // 只做登录态体检，这里用不到 user 本身
   const { data: node, error: fetchErr } = await supabase
@@ -356,8 +382,9 @@ export async function completeNode(nodeId: string) {
   if (fetchErr) throw fetchErr
   const n = node as GameNode
 
-  // 幂等守卫：已申报过 / 已进终态，直接返回
-  // （修掉"完成之后完成按钮还能点"——重复点击不再产生任何副作用）
+  // 这一小段只是"提前告知"（省掉一次写请求），**不是防重复的防线** ——
+  // 并发时两个请求都会读到旧值、都走到这儿。真正防重复的是下面每个分支里的
+  // 条件更新（claimNode / 带 `is('completed_at', null)` 的认领）。
   if (n.completed_at) return
   if (n.status === 'settled' && n.compound_a_done !== null) return
 
@@ -374,22 +401,17 @@ export async function completeNode(nodeId: string) {
 
   // B：确认享受完毕（分早已到账，这里只是记账标记，无时限）
   if (n.kind === 'B' && n.status === 'active') {
-    const { error } = await supabase
-      .from('nodes')
-      .update({ status: 'settled', completed_at: new Date().toISOString() })
-      .eq('id', nodeId)
-    if (error) throw error
+    // 抢不到 = 别人已经确认过了。这里没有记账，但同样走认领，免得重复触发结算
+    if (!(await claimNode(nodeId))) return
     await settleAll()
     return
   }
 
   // A：active → 完成，立刻奖励 B（分先到账，B 等待用户点"确认"标记，无时限）
   if (n.kind === 'A' && n.status === 'active') {
-    const { error } = await supabase
-      .from('nodes')
-      .update({ status: 'settled', completed_at: new Date().toISOString() })
-      .eq('id', nodeId)
-    if (error) throw error
+    // ★ 认领这一步决定了「连点会不会多加分」——
+    // 抢不到就说明这一次是重复提交，直接收工，**不进下面任何一条记账**
+    if (!(await claimNode(nodeId))) return
     // B 开启为 active（待确认），同时立刻加分
     const { data: bNode, error: bFetchErr } = await supabase
       .from('nodes')
@@ -451,12 +473,19 @@ export async function completeNode(nodeId: string) {
     }
   }
 
-  // A 复合体补完 / C 完成：只记完成时间，结算交给 settleAll
-  const { error } = await supabase
+  // A 复合体补完 / C 完成：只记完成时间，结算交给 settleAll。
+  //
+  // 这里是**认领式**的：节点此时已经是 settled（判负），所以条件用 completed_at 而不是
+  // status。抢不到 = 已经申报过 → 直接收工，别再扣待办格子、也别再触发一次结算
+  //（复合体的返还是 settle_all 里记账的，重复触发会有重复返还的风险）。
+  const { data: claimed, error } = await supabase
     .from('nodes')
     .update({ completed_at: new Date().toISOString() })
     .eq('id', nodeId)
+    .is('completed_at', null)
+    .select('id')
   if (error) throw error
+  if (!claimed?.length) return
 
   // A 的补做也算「最终完成了」，同样扣一格。
   // （C 没有 todo_id，传进去也是空转；B 走不到这里。）
@@ -484,12 +513,18 @@ export async function concedeNode(nodeId: string) {
   if (n.status !== 'active') return
   if (n.completed_at) return // 已申报完成，不再接受放弃
 
-  // 把 due_at 挪到过去，让 settleAll 走超时分支（复用同一结算路径，避免两套逻辑）
-  const { error } = await supabase
+  // 把 due_at 挪到过去，让 settleAll 走超时分支（复用同一结算路径，避免两套逻辑）。
+  // 认领式：抢不到说明这一瞬间已经被放弃/完成了，别重复触发结算。
+  const { data: claimed, error } = await supabase
     .from('nodes')
     .update({ due_at: new Date(Date.now() - 1000).toISOString() })
     .eq('id', nodeId)
+    .eq('status', 'active')
+    .is('completed_at', null)
+    .select('id')
   if (error) throw error
+  if (!claimed?.length) return
+
   await settleAll()
 }
 

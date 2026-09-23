@@ -189,24 +189,35 @@ async function handleError(e: unknown) {
   message.error((e as Error).message)
 }
 
-async function onComplete(n: GameNode, tip: string) {
+/**
+ * 请求飞行期间锁住按钮。
+ *
+ * ⚠️ 这**只是手感**，不是安全措施 —— 重复提交不会重复记账，那件事由数据库层的
+ * 条件更新（`claimNode`）保证。前端锁挡不住重试、双开、慢网络下的重复提交。
+ * 它解决的是：连点几下会叠出好几条成功提示、按钮还会闪。
+ */
+const acting = ref(false)
+
+async function act(fn: () => Promise<void>, done: () => void) {
+  if (acting.value) return
+  acting.value = true
   try {
-    await completeNode(n.id)
-    message.success(tip)
+    await fn()
+    done()
     emit('refresh')
   } catch (e) {
     await handleError(e)
+  } finally {
+    acting.value = false
   }
 }
 
-async function onConcede(n: GameNode, tip: string) {
-  try {
-    await concedeNode(n.id)
-    message.warning(tip)
-    emit('refresh')
-  } catch (e) {
-    await handleError(e)
-  }
+function onComplete(n: GameNode, tip: string) {
+  return act(() => completeNode(n.id), () => void message.success(tip))
+}
+
+function onConcede(n: GameNode, tip: string) {
+  return act(() => concedeNode(n.id), () => void message.warning(tip))
 }
 </script>
 
@@ -241,12 +252,12 @@ async function onConcede(n: GameNode, tip: string) {
                 {{ g.a.completed_at ? '已完成，等另一边一起结算' : '还没补做' }}
               </p>
               <div class="rt-actrow">
-                <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy"
+                <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy || acting"
                   @click="onComplete(g.a, '已补做原目标 —— 两边都完成就全部返还')">补做完成</button>
                 <button v-else class="rbtn" disabled>已补做</button>
                 <a-popconfirm v-if="canConcede(g.a)" title="放弃补做？A 的扣分保持不变，也不会返还。"
                   ok-text="放弃" cancel-text="取消" @confirm="onConcede(g.a, '已放弃补做')">
-                  <button class="rbtn rbtn-danger" :disabled="busy">放弃</button>
+                  <button class="rbtn rbtn-danger" :disabled="busy || acting">放弃</button>
                 </a-popconfirm>
               </div>
             </div>
@@ -261,12 +272,12 @@ async function onConcede(n: GameNode, tip: string) {
                 {{ g.c.completed_at ? '已完成，等另一边一起结算' : '还没做' }}
               </p>
               <div class="rt-actrow">
-                <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy"
+                <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy || acting"
                   @click="onComplete(g.c, '已把拖延的事做完 —— 两边都完成就全部返还')">完成</button>
                 <button v-else class="rbtn" disabled>已完成</button>
                 <a-popconfirm v-if="canConcede(g.c)" title="放弃惩罚？C 的死线一到就会再扣一次 A + C。"
                   ok-text="放弃" cancel-text="取消" @confirm="onConcede(g.c, '已放弃惩罚')">
-                  <button class="rbtn rbtn-danger" :disabled="busy">放弃</button>
+                  <button class="rbtn rbtn-danger" :disabled="busy || acting">放弃</button>
                 </a-popconfirm>
               </div>
             </div>
@@ -301,11 +312,11 @@ async function onConcede(n: GameNode, tip: string) {
                 <span v-if="isOverdue(g.a) || canComplete(g.a) || canConcede(g.a)" class="rt-btns">
                   <button v-if="isOverdue(g.a)" class="rbtn" disabled>已过死线</button>
                   <template v-else>
-                    <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy"
+                    <button v-if="canComplete(g.a)" class="rbtn-primary" :disabled="busy || acting"
                       @click="onComplete(g.a, '目标达成，奖励 B 已到账')">完成</button>
                     <a-popconfirm v-if="canConcede(g.a)" title="放弃目标？立刻判负并进入惩罚复合体。"
                       ok-text="放弃" cancel-text="取消" @confirm="onConcede(g.a, '已放弃，进入惩罚复合体')">
-                      <button class="rbtn rbtn-danger" :disabled="busy">放弃</button>
+                      <button class="rbtn rbtn-danger" :disabled="busy || acting">放弃</button>
                     </a-popconfirm>
                   </template>
                 </span>
@@ -327,7 +338,7 @@ async function onConcede(n: GameNode, tip: string) {
                 <template v-else-if="!g.b.completed_at">
                   <span class="rt-meta" style="color: var(--rt-green)">+{{ g.b.stake }} 分已到账，享受完点确认</span>
                   <span class="rt-btns">
-                    <button class="rbtn-primary" :disabled="busy" @click="onComplete(g.b, '奖励已确认')">确认</button>
+                    <button class="rbtn-primary" :disabled="busy || acting" @click="onComplete(g.b, '奖励已确认')">确认</button>
                   </span>
                 </template>
                 <span v-else class="rt-meta">已奖励 {{ g.b.stake }} 分，已确认</span>
@@ -352,11 +363,11 @@ async function onConcede(n: GameNode, tip: string) {
                     <span class="rt-btns">
                       <button v-if="isOverdue(g.c)" class="rbtn" disabled>已过窗口</button>
                       <template v-else>
-                        <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy"
+                        <button v-if="canComplete(g.c)" class="rbtn-primary" :disabled="busy || acting"
                           @click="onComplete(g.c, '已把拖延的事做完')">完成</button>
                         <a-popconfirm v-if="canConcede(g.c)" title="放弃惩罚？复合体会按最终结果结算。"
                           ok-text="放弃" cancel-text="取消" @confirm="onConcede(g.c, '已放弃惩罚')">
-                          <button class="rbtn rbtn-danger" :disabled="busy">放弃</button>
+                          <button class="rbtn rbtn-danger" :disabled="busy || acting">放弃</button>
                         </a-popconfirm>
                       </template>
                     </span>

@@ -68,6 +68,10 @@ VITE_SUPABASE_ANON_KEY=...          # 或 VITE_SUPABASE_PUBLISHABLE_KEY=...
 
 > ⚠️ `0015` / `0016` / `0017` / `0018` 都属于**「不跑前端就报错」**的迁移：
 > 前端会读写新表/新列，没跑的话一打开就报错（不是静默降级）。**先跑迁移再更新前端。**
+>
+> `0019` 不是硬门槛（`settle_all` / `seal_archive` 早就存在，它只换实现），
+> 但它把两个函数改成了并发安全的「认领式」—— 不跑的话「连点完成 / 放弃 / 封档」
+> 仍有很窄的重复记账窗口。**建议跑。**
 
 数据：`supabase/migrations/0016_todos.sql`、`0017_todo_times.sql`、`0018_todo_note.sql`。
 
