@@ -74,8 +74,15 @@ const tierName: Record<string, string> = { low: '低', mid: '中', high: '高', 
 
 // ---------- 显示辅助 ----------
 
+/**
+ * 过没过死线。
+ *
+ * **B 永远不算超时** —— 它无时限（due_at 只是继承 A 做展示），分早到账了，
+ * 只是等用户点一下"确认"。不排除的话，A 的死线一过，奖励那条就会挂着
+ * 琥珀色的「已超时（待结算）」，跟机制正好说反。
+ */
 function isOverdue(n: GameNode): boolean {
-  return n.status === 'active' && new Date(n.due_at) < now.value
+  return n.kind !== 'B' && n.status === 'active' && new Date(n.due_at) < now.value
 }
 
 /**

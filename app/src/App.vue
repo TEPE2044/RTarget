@@ -226,8 +226,25 @@ async function reportError(e: unknown, prefix = '') {
 
 // ---------- 数据刷新 ----------
 
-async function refresh() {
-  busy.value = true
+/** 一轮数据请求是否还在跑。只给后台那种（silent）用来防重入，不参与界面禁用 */
+let refreshing = false
+
+/**
+ * 拉数据。
+ *
+ * `silent = true` 是**后台自跑**（惰性结算），只更新数据、**不碰 `busy`**。
+ * `busy` 是"用户操作进行中"的锁，绑在一堆输入框和按钮的 `:disabled` 上 ——
+ * 后台刷新去动它，就会把正在写备忘录的人的输入框直接灰掉（2026-09-24 报的就是这个）。
+ * 正确性不靠 busy：记账那一侧是认领式的（0019 / claimNode），灰不灰都不会多记一笔。
+ */
+async function refresh(opts: { silent?: boolean } = {}) {
+  const silent = opts.silent === true
+  if (silent) {
+    if (refreshing || busy.value) return // 用户正在操作，或上一轮还没跑完 → 不叠
+    refreshing = true
+  } else {
+    busy.value = true
+  }
   try {
     try {
       await loadAll()
@@ -248,7 +265,8 @@ async function refresh() {
     // 平台侧的问题狂重试只会白打服务端。
     if (isClockSkewError(e)) scheduleSkewRetry()
   } finally {
-    busy.value = false
+    if (silent) refreshing = false
+    else busy.value = false
   }
 }
 
@@ -292,6 +310,10 @@ async function loadAll() {
  * 那个中间态既是漏洞（还能点完成、白拿奖励），也让人看不懂。
  * 所以一发现有节点刚过期就立刻结算一次，让卡片自己变成"已判负 + 惩罚复合体"。
  *
+ * ⚠️ **B 必须排除**：它无时限（due_at 只是继承 A 做展示），`settle_all` 永远不收口它，
+ * 只能等用户点"确认"。不排除的话，只要有一条 B 挂着没确认，这里就会每 30 秒命中一次
+ * —— 后台刷新反复把界面灰掉（2026-09-24 报的输入框变灰就是这个）。
+ *
  * 30 秒内最多触发一次：万一下次结算没能把它收口，也不至于每秒发一个请求。
  */
 let lastAutoSettle = 0
@@ -299,11 +321,12 @@ function autoSettleIfExpired() {
   if (busy.value) return
   if (Date.now() - lastAutoSettle < 30_000) return
   const hit = allNodes.value.some(
-    (n) => n.status === 'active' && !n.completed_at && new Date(n.due_at) <= now.value
+    (n) => n.kind !== 'B' && n.status === 'active' && !n.completed_at && new Date(n.due_at) <= now.value
   )
   if (!hit) return
   lastAutoSettle = Date.now()
-  void refresh() // refresh 自己处理错误，这里不等它
+  // silent：这是后台行为，别去动 busy（否则正在输入的框会被灰掉）
+  void refresh({ silent: true }) // refresh 自己处理错误，这里不等它
 }
 
 onMounted(() => {
