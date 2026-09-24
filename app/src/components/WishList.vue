@@ -18,7 +18,10 @@ import type { Wish } from '../lib/game'
 
 const { forceSignOut } = useAuth()
 
-const props = defineProps<{ wishes: Wish[]; busy?: boolean }>()
+const props = withDefaults(
+  defineProps<{ wishes: Wish[]; busy?: boolean; occupiedBy?: Record<string, string> }>(),
+  { occupiedBy: () => ({}) }
+)
 const emit = defineEmits<{ refresh: [] }>()
 
 const draft = ref('')
@@ -163,6 +166,11 @@ function dateText(iso: string | null): string {
               </button>
             </a-popconfirm>
           </div>
+
+          <!-- 已被某个进行中的目标挂为奖励：说清楚它为什么不在「从愿望单选」里 -->
+          <p v-if="occupiedBy[w.id]" class="rt-meta" style="margin: 6px 0 0">
+            已挂给「{{ occupiedBy[w.id] }}」· 兑现或判负前不能再挑
+          </p>
         </div>
       </div>
     </div>

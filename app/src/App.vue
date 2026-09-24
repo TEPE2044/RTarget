@@ -63,8 +63,34 @@ let stopResume: (() => void) | null = null
 
 const openArchives = computed(() => archives.value.filter((a) => a.status === 'open'))
 const sealedArchives = computed(() => archives.value.filter((a) => a.status === 'sealed'))
-/** 还没实现的愿望 —— 设目标时可选的奖励 */
+/** 还没实现的愿望 */
 const openWishes = computed(() => wishes.value.filter((w) => w.status === 'open'))
+
+/**
+ * 已被「进行中目标」挂为奖励的愿望 → 占着它的那个 A（wish id → A 节点）
+ *
+ * 愿望的兑现时刻是 A 达成那一刻（见 game.ts 的 completeNode），所以 A 还在跑的
+ * 时候它就已经许出去了：不该再出现在「从愿望单选」里、被第二个目标再挂一次。
+ * A 判负 → B 永远不开，这条愿望自己回到可挑；A 达成 → 它直接被划成已实现。
+ */
+const occupiedWishes = computed(() => {
+  const byId = new Map(allNodes.value.map((n) => [n.id, n]))
+  const taken = new Map<string, GameNode>()
+  for (const n of allNodes.value) {
+    if (n.kind !== 'B' || !n.wish_id) continue
+    const a = n.parent_id ? byId.get(n.parent_id) : undefined
+    if (a?.status === 'active') taken.set(n.wish_id, a)
+  }
+  return taken
+})
+/** 真正能挑的奖励池：把已经被挂走的愿望剔掉 */
+const pickableWishes = computed(
+  () => openWishes.value.filter((w) => !occupiedWishes.value.has(w.id))
+)
+/** 给愿望单标注用：wish id → 占着它的目标文案 */
+const occupiedWishTitles = computed<Record<string, string>>(() =>
+  Object.fromEntries([...occupiedWishes.value].map(([id, a]) => [id, a.content]))
+)
 /** 还没做的待办 —— 设目标时可选的题材 */
 const openTodos = computed(() => todos.value.filter((t) => t.status === 'open'))
 const activeArchive = computed(
@@ -644,14 +670,14 @@ const rewardSource = ref<RewardSource>('free')
 /** 自己写的时候，顺便存进愿望单 */
 const saveToWishlist = ref(false)
 
-const canPickWish = computed(() => openWishes.value.length > 0)
-/** 愿望都实现完（或一条都没有）时没有"挑"这个选项，自动退回手输 */
+/** 只剩已被挂走的愿望（或一条都没有）时没有"挑"这个选项，自动退回手输 */
+const canPickWish = computed(() => pickableWishes.value.length > 0)
 watch(canPickWish, (ok) => {
   if (!ok) rewardSource.value = 'free'
 }, { immediate: true })
 
 const wishOptions = computed(() =>
-  openWishes.value.map((w) => ({ value: w.id, label: w.content }))
+  pickableWishes.value.map((w) => ({ value: w.id, label: w.content }))
 )
 const selectedWish = computed(
   () => openWishes.value.find((w) => w.id === goalForm.value.rewardWishId) ?? null
@@ -778,6 +804,9 @@ function resetGoalForm() {
     todoId: '', rewardWishId: '', rewardContent: '',
     penalty: { content: '' },
   }
+  // 来源模式也要回默认：不然上次停在「从愿望单选」，这次一进来就是"挑过的"样子
+  goalSource.value = 'free'
+  rewardSource.value = 'free'
   penaltyTimeTouched.value = false
   penaltyTime.value = def.slice(11, 16)
   saveToWishlist.value = false
@@ -1082,7 +1111,8 @@ function archiveGoalCount(id: string): number {
 
         <!-- ==================== 愿望单 ==================== -->
         <section v-else-if="page === 'wish'">
-          <WishList :wishes="wishes" :busy="busy" @refresh="refresh" />
+          <WishList :wishes="wishes" :busy="busy" :occupied-by="occupiedWishTitles"
+            @refresh="refresh" />
         </section>
 
         <!-- ==================== 历史记录 ==================== -->
@@ -1315,7 +1345,7 @@ function archiveGoalCount(id: string): number {
               <button type="button" class="rt-segbtn" :class="{ active: rewardSource === 'wish' }"
                 @click="rewardSource = 'wish'">
                 <span>从愿望单选</span>
-                <span class="rt-meta">{{ openWishes.length }} 个待实现</span>
+                <span class="rt-meta">{{ pickableWishes.length }} 个可挑</span>
               </button>
               <button type="button" class="rt-segbtn" :class="{ active: rewardSource === 'free' }"
                 @click="rewardSource = 'free'">
