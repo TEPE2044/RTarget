@@ -39,14 +39,14 @@ const nodes: GameNode[] = [
     id: 'a1', kind: 'A', content: '做完 660 题第三章', due_at: atHM(1, 18),
     note: '第三章 3.1~3.5，错题抄到笔记本第 12 页',
   }),
-  mk({ id: 'b1', kind: 'B', parent_id: 'a1', content: '看一集纪录片', status: 'bound', due_at: atHM(1, 18) }),
+  mk({ id: 'b1', kind: 'B', parent_id: 'a1', content: '看一集纪录片', status: 'bound', due_at: atHM(1, 18), wish_id: 'w1' }),
   mk({ id: 'c1', kind: 'C', parent_id: 'a1', content: '把堆着的快递盒清掉', status: 'bound', due_at: atHM(4, 9, 30) }),
 
   mk({
     id: 'a2', kind: 'A', content: '跑完半马训练计划', status: 'settled', due_at: at(-2),
     note: '周三 5km + 周六 10km\n配速 6:30 左右就行',
   }),
-  mk({ id: 'b2', kind: 'B', parent_id: 'a2', content: '买那个键盘', status: 'bound', due_at: at(-2) }),
+  mk({ id: 'b2', kind: 'B', parent_id: 'a2', content: '买那个键盘', status: 'bound', due_at: at(-2), wish_id: 'w2' }),
   mk({
     id: 'c2', kind: 'C', parent_id: 'a2', content: '把简历模板重写一遍',
     status: 'active', due_at: at(4),
@@ -124,6 +124,25 @@ const wishes: Wish[] = [
   { id: 'w5', user_id: 'u1', content: '买本《深度工作》', status: 'done', done_at: at(-5), done_archive_id: 'a5', created_at: at(-20) },
   { id: 'w6', user_id: 'u1', content: '买个新键帽', status: 'done', done_at: at(-8), done_archive_id: 'a4', created_at: at(-30) },
 ]
+
+/**
+ * 「已被某个进行中目标挂走的愿望」—— 判据与 App.vue 的 `occupiedWishes` 一致：
+ * B 挂着某个 wish，且**它的父 A 还在 active**（A 一了结就不再占用）。
+ *
+ * 预览页让两种状态各出现一个：
+ *   w1 挂在 b1 上、b1 的父 a1 还在跑 → **占用**（兑现/删除锁住）
+ *   w2 挂在 b2 上、b2 的父 a2 已判负 → 不占用（愿望自己回到可挑池）
+ */
+const occupiedBy = computed(() => {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const taken: Record<string, string> = {}
+  for (const n of nodes) {
+    if (n.kind !== 'B' || !n.wish_id) continue
+    const a = n.parent_id ? byId.get(n.parent_id) : undefined
+    if (a?.status === 'active') taken[n.wish_id] = a.content
+  }
+  return taken
+})
 
 // times_* = 电量格（0017）。默认 1 = 一次性的；> 1 的才显示格子。
 // 这里 t2 / t4 故意留成多次，用来看格子在不同数量下的样子。
@@ -381,7 +400,7 @@ const closedNodes = computed(() => nodes.filter((n) => ['a4', 'a5', 'b4', 'b5', 
 
       <!-- 愿望单（tab=3）· 走真实组件 -->
       <template v-else-if="tab === 3">
-        <WishList :wishes="wishes" />
+        <WishList :wishes="wishes" :occupied-by="occupiedBy" />
       </template>
 
       <!-- 历史（tab=4） -->

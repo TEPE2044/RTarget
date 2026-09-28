@@ -78,7 +78,29 @@ function saveEdit() {
   })
 }
 
+/**
+ * 这个愿望是不是已经被某个「进行中目标」挂为奖励了。
+ *
+ * 挂走之后它就已经许出去了，兑现和删除都必须锁住 ——
+ *   · 提前兑现了，那个目标达成时就无处可兑（`setWishDone` 带 `status='open'` 条件，
+ *     会静默地影响 0 行），历史里也记不到是哪个存档兑现的
+ *   · 删掉了，那个目标的 `wish_id` 就指向一个不存在的愿望
+ *
+ * 要动它，先去「执行」页把那个目标了结：**判负之后它自己就回到可挑池**，
+ * 达成之时它会被自动划成已实现。
+ *
+ * ⚠️ 按钮禁用只是**表象**，这两个函数里的守卫才是防线 ——
+ * 别只留 UI 那一层（既然「挂走了」，那这两个动作在语义上就是错的，在哪触发都不该放行）。
+ */
+function occupiedTitle(w: Wish): string {
+  return props.occupiedBy?.[w.id] ?? ''
+}
+
 function onDone(w: Wish) {
+  const taken = occupiedTitle(w)
+  if (taken) {
+    return message.warning(`这个愿望已经挂给「${taken}」了 —— 等那个目标出结果再兑现`)
+  }
   return act(async () => {
     await setWishDone(w.id)
     message.success(`「${w.content}」已标记为实现`)
@@ -95,6 +117,12 @@ function onReopen(w: Wish) {
 }
 
 function onDelete(w: Wish) {
+  const taken = occupiedTitle(w)
+  if (taken) {
+    return message.warning(
+      `这个愿望已经挂给「${taken}」了 —— 要删先去「执行」页把那个目标了结`
+    )
+  }
   return act(async () => {
     await deleteWish(w.id)
     message.success('已从愿望单删掉')
@@ -148,17 +176,18 @@ function dateText(iso: string | null): string {
           <div v-else class="rt-line1" style="flex-wrap: nowrap">
             <span class="rt-t14s rt-li-main rt-wish-tx" style="cursor: pointer"
               @click="startEdit(w)">{{ w.content }}</span>
-            <button class="rt-iconbtn rt-iconbtn-sm" :disabled="busy" aria-label="标记为实现"
-              @click="onDone(w)">
+            <!-- 已挂给某个进行中目标的，兑现和删除都锁住（改文案不受影响，B 存的是快照） -->
+            <button class="rt-iconbtn rt-iconbtn-sm" :disabled="busy || !!occupiedBy[w.id]"
+              aria-label="标记为实现" @click="onDone(w)">
               <svg class="rt-ico" width="16" height="16" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4.8 12.6 9.6 17.4 19.2 6.9" />
               </svg>
             </button>
             <a-popconfirm title="从愿望单删掉？已经立过的目标不受影响。" ok-text="删除" cancel-text="取消"
-              @confirm="onDelete(w)">
-              <button class="rt-iconbtn rt-iconbtn-sm rt-iconbtn-danger" :disabled="busy"
-                aria-label="删除">
+              :disabled="!!occupiedBy[w.id]" @confirm="onDelete(w)">
+              <button class="rt-iconbtn rt-iconbtn-sm rt-iconbtn-danger"
+                :disabled="busy || !!occupiedBy[w.id]" aria-label="删除">
                 <svg class="rt-ico" width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M4 7h16M9.5 7V4.8h5V7M6.6 7l1 12.2h8.8L17.4 7" />
@@ -167,9 +196,9 @@ function dateText(iso: string | null): string {
             </a-popconfirm>
           </div>
 
-          <!-- 已被某个进行中的目标挂为奖励：说清楚它为什么不在「从愿望单选」里 -->
+          <!-- 已被某个进行中的目标挂为奖励：说清它现在为什么不能动 -->
           <p v-if="occupiedBy[w.id]" class="rt-meta" style="margin: 6px 0 0">
-            已挂给「{{ occupiedBy[w.id] }}」· 兑现或判负前不能再挑
+            已挂给「{{ occupiedBy[w.id] }}」· 兑现、删除、重新挑都要等那个目标出结果
           </p>
         </div>
       </div>
