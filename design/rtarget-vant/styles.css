@@ -1,0 +1,241 @@
+/* ============================================================
+ * RTarget Vant 原型 · 皮肤层（styles.css）
+ *
+ * 主题：墨色主调 + 三身份
+ *   目标 = 墨（主角）· 奖励 = 暖橙 · 惩罚 = 冷蓝灰
+ *   交互色（按钮/选中/标签栏）统一收进墨色，颜色只留给三种身份。
+ * Vant 组件保持原味（结构/交互不动），这里只做令牌覆盖 + 自绘块。
+ * ============================================================ */
+
+:root {
+  --ink: #1F2329;
+  --ink-2: #4E5969;
+  --ink-3: #86909C;
+  --line: #EBEDF0;
+  --bg: #F5F6F8;
+  --card: #FFFFFF;
+  --warm: #E8830C;
+  --warm-bg: #FFEFCB;
+  --warm-deep: #9A5B06;
+  --cold: #55657A;
+  --cold-bg: #E4EBF4;
+  --cold-deep: #3A4656;
+  --accent: #2563EB;          /* 选中色：底部 tab / 顶部标签 —— 只做交互选中，不进三身份 */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 20px -8px rgba(16, 24, 40, .10);
+
+  /* —— Vant 令牌覆盖（所有组件跟着走） —— */
+  --van-primary-color: var(--ink);
+  --van-tabbar-item-active-color: var(--accent);
+  --van-tabs-bottom-bar-color: var(--accent);
+  --van-tab-active-text-color: var(--accent);
+  --van-background: var(--bg);
+  --van-background-2: var(--card);
+  --van-text-color: var(--ink);
+  --van-text-color-2: var(--ink-3);
+  --van-border-color: var(--line);
+  --van-radius-md: 10px;
+  --van-radius-lg: 12px;
+}
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: #E8EAED;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* ---------- 手机框（桌面居中；transform 把弹层关在框里） ---------- */
+.phone {
+  max-width: 430px; margin: 0 auto; height: 100dvh;
+  background: var(--bg); overflow: hidden; position: relative;
+  display: flex; flex-direction: column;
+  transform: translateZ(0);
+}
+@media (min-width: 481px) {
+  .phone { box-shadow: 0 0 0 1px rgba(16, 24, 40, .06), 0 24px 64px rgba(16, 24, 40, .16); }
+}
+.app { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.views { flex: 1; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+.pad { padding: 4px 0 24px; }
+
+/* ---------- Vant 细部统一 ---------- */
+.van-cell-group--inset { border-radius: 14px; box-shadow: var(--shadow-card); }
+.van-cell-group__title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.van-nav-bar__title { font-weight: 600; }
+.van-tabbar-item--active { font-weight: 600; }
+.van-tabbar-item--active .van-tabbar-item__icon { font-weight: normal; }
+.van-button:not(.van-button--round) { border-radius: 10px; }
+.van-tag:not(.van-tag--round) { border-radius: 6px; }
+
+/* ---------- 首页 · 活力值（主角数据） ---------- */
+.hero-card {
+  margin: 12px 16px; padding: 18px 18px 16px;
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card);
+}
+.hero-label { margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; color: var(--ink-3); }
+.hero-num {
+  margin: 0 0 14px; font-size: 34px; font-weight: 700; line-height: 1;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.hero-bar { height: 8px; border-radius: 99px; background: #EEF0F3; overflow: hidden; }
+.hero-bar i {
+  display: block; height: 100%; border-radius: 99px; background: var(--ink);
+  transition: width .8s cubic-bezier(.2, .8, .2, 1);
+}
+.hero-legend { margin: 12px 0 0; font-size: 12px; color: var(--ink-3); }
+.hero-legend b { color: var(--ink-2); font-weight: 600; }
+
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 16px; }
+
+/* ---------- Cell 的 #icon 插槽 ----------
+ * Vant 只在用 `icon` prop 时才套一层 .van-cell__left-icon（24px 高 + 右边距），
+ * 走 #icon 插槽的话节点是裸的、直接当 flex 子项被拉满整格高
+ * → 图标顶到格子上沿、右边也没间距，看着就是"错位"。
+ * 自己包一层 .cell-lead，把图标钉在标题那一行上。
+ */
+.cell-lead {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  height: var(--van-cell-line-height, 24px); margin-right: 8px;
+}
+
+/* ---------- 最近动态：按类型上色的小图标 ---------- */
+.f-ic { font-size: 16px; line-height: 1; }
+.f-ic-done { color: var(--ink); }
+.f-ic-failed { color: var(--cold); }
+.f-ic-redeemed { color: var(--warm); }
+.f-ic-created { color: var(--ink-3); }
+.f-ic-sealed { color: var(--ink-3); }
+
+/* ---------- 目标卡（墨色主角 + 两张身份小票） ---------- */
+.goal-card {
+  position: relative; margin: 0 16px 10px; padding: 18px 16px 16px;
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card);
+  cursor: pointer; transition: transform .15s ease;
+}
+.goal-card:active { transform: translateY(1px); }
+.goal-card::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  border-radius: 16px 16px 0 0; background: var(--ink);
+}
+.goal-title {
+  margin: 0 0 6px; font-size: 17px; font-weight: 650; line-height: 1.45;
+  color: var(--ink); text-align: center;
+}
+.goal-meta {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin: 0 0 14px; font-size: 12.5px; color: var(--ink-3);
+}
+.goal-meta .van-icon { font-size: 14px; }
+
+/* 奖励 / 惩罚：等宽对齐，铺满整行 */
+.goal-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.chip {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  height: 36px; min-width: 0; max-width: 100%; padding: 0 12px;
+  border-radius: 10px; font-size: 12.5px; font-weight: 600; line-height: 1;
+}
+.chip .van-icon { flex: none; font-size: 14px; }
+.chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-warm { background: var(--warm-bg); color: var(--warm-deep); }
+.chip-cold { background: var(--cold-bg); color: var(--cold-deep); }
+.chip-ink { background: #F2F3F5; color: var(--ink-2); }
+
+/* ---------- 待办 / 愿望 ---------- */
+/* 多次待办 = 电量格 + 还剩 N / M 次 */
+.batt-line { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.batt { display: inline-flex; align-items: center; gap: 3px; }
+.batt i { width: 8px; height: 8px; border-radius: 2px; background: #DCDFE4; }
+.batt i.on { background: var(--ink); }
+.batt-tx { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* 待办的计划/备注：一道竖线当引用，跟标题分开 */
+.t-note { margin: 6px 0 0; padding-left: 8px; border-left: 2px solid var(--line); }
+
+.row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.muted .van-cell__title { color: var(--ink-3); }
+
+/* ---------- 目标页：存档 chips + 封档 ---------- */
+.a-chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px 4px; scrollbar-width: none; }
+.a-chips::-webkit-scrollbar { display: none; }
+.a-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 14px;
+  border-radius: 99px; border: 1px solid var(--line); background: var(--card);
+  color: var(--ink-2); font-size: 13px; cursor: pointer; transition: all .15s;
+}
+.a-chip.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.a-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.a-chip.on .dot { background: #fff; }
+.a-chip-add { color: var(--ink-3); border-style: dashed; }
+.seal-row { display: flex; align-items: center; gap: 8px; margin: 10px 16px 4px; }
+.seal-hint { font-size: 12px; color: var(--ink-3); }
+.seal-row .van-button { margin-left: auto; }
+
+/* ---------- 历史：封档记录（只读） ---------- */
+.sec { margin: 14px 16px 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.h-card {
+  margin: 0 16px 10px; padding: 13px 16px; background: var(--card); border-radius: 14px;
+  box-shadow: var(--shadow-card); cursor: pointer; transition: transform .15s;
+}
+.h-card:active { transform: translateY(1px); }
+.h-card.on { outline: 2px solid var(--accent); outline-offset: -2px; }
+.h-head { display: flex; align-items: center; gap: 8px; }
+.h-lock { font-size: 14px; color: var(--ink-3); }
+.h-name {
+  flex: 1; min-width: 0; font-size: 15px; font-weight: 600; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.h-pill { flex: none; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; line-height: 22px; }
+.h-pill-paid { background: var(--cold-bg); color: var(--cold-deep); }
+.h-pill-free { background: var(--warm-bg); color: var(--warm-deep); }
+.h-time { margin: 6px 0 0; font-size: 12px; color: var(--ink-3); }
+
+/* ---------- 目标详情 ---------- */
+.d-page { height: 100%; display: flex; flex-direction: column; background: var(--bg); }
+.d-body { flex: 1; overflow-y: auto; padding: 4px 0 20px; }
+.hero {
+  margin: 14px 16px 8px; font-size: 22px; line-height: 1.45; font-weight: 700;
+  color: var(--ink); letter-spacing: -.01em;
+}
+.d-meta { display: flex; align-items: center; gap: 8px; margin: 0 16px 18px; color: var(--ink-3); font-size: 13px; }
+.panel { border-radius: 14px; padding: 14px 16px; margin: 0 16px 10px; }
+.panel-warm { background: var(--warm-bg); border: 1px solid #F3DCB0; }
+.panel-cold { background: var(--cold-bg); border: 1px solid #D5DEE9; }
+.p-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.panel-warm .p-head { color: var(--warm-deep); }
+.panel-cold .p-head { color: var(--cold-deep); }
+.p-text { margin: 0; font-size: 15px; color: var(--ink); line-height: 1.55; }
+.p-sub { margin: 6px 0 0; font-size: 12px; line-height: 1.55; }
+.panel-warm .p-sub { color: rgba(154, 91, 6, .72); }
+.panel-cold .p-sub { color: rgba(58, 70, 86, .72); }
+.d-exec-label {
+  display: flex; align-items: center; gap: 6px; margin: 20px 16px 8px;
+  font-size: 12px; letter-spacing: .06em; color: var(--ink-3);
+}
+
+/* ---------- 立项向导 ---------- */
+.wz-page { height: 100%; display: flex; flex-direction: column; background: var(--bg); }
+.wz-body { flex: 1; overflow-y: auto; padding-bottom: 12px; }
+.wz-h { margin: 10px 16px 6px; font-size: 20px; font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
+.wz-sub { margin: 0 16px 16px; font-size: 13px; color: var(--ink-3); line-height: 1.7; }
+.dots { display: flex; gap: 6px; padding: 2px 16px 8px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: #DCDFE4; transition: background .15s; }
+.dots i.on { background: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 16px 14px; }
+.segline { display: flex; gap: 8px; margin: 0 16px 14px; }
+.segline .van-button { flex: 1; height: 38px; padding: 0 6px; font-size: 13.5px; }
+.segline-pad { margin: 10px 16px 6px; }
+.legend2 { padding: 0 16px 12px; font-size: 12px; color: var(--ink-3); }
+.wz-body .van-notice-bar { margin: 6px 16px 0; border-radius: 10px; }
+
+/* ---------- 底部动作条 ---------- */
+.foot {
+  display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--card); border-top: 1px solid var(--line);
+}
+
+/* ---------- 待办抽屉 ---------- */
+.sheet { padding-top: 16px; }
+.sheet-head { padding: 0 16px 12px; font-size: 16px; font-weight: 650; color: var(--ink); }

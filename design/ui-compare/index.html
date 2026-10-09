@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RTarget · 两张脸对比（Vant 4 / shadcn）</title>
+<link rel="stylesheet" href="vendor/vant.css" />
+<style>
+  /* ---------- 对比页外壳（评审板） ---------- */
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:#141517;color:#e9e9ec;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .head{padding:38px 28px 6px;text-align:center}
+  .head h1{margin:0 0 8px;font-size:22px;font-weight:650;letter-spacing:.01em}
+  .head p{margin:0;font-size:13.5px;color:#9d9da6;line-height:1.8}
+  .cols{display:flex;justify-content:center;align-items:flex-start;gap:56px;flex-wrap:wrap;padding:30px 28px 48px}
+  .col{width:375px}
+  .tag{
+    display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;margin:0 0 12px;
+    border:1px solid rgba(255,255,255,.16);border-radius:999px;font-size:12.5px;color:#d6d6dc;letter-spacing:.02em;
+  }
+  .tag b{color:#fff;font-weight:600}
+  .phone{
+    width:375px;height:780px;border-radius:30px;overflow:hidden;position:relative;
+    box-shadow:0 30px 70px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.09);
+  }
+  .phone>div{height:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+  .phone>div::-webkit-scrollbar{display:none}
+  .cap{margin:12px 2px 0;font-size:12.5px;color:#9d9da6;line-height:1.8}
+  @media (max-width:900px){ .cols{gap:36px} }
+
+  /* ---------- A · Vant 4（用它的原味，不魔改） ---------- */
+  .phone.vant{background:#f7f8fa}
+  .v-progress-wrap{padding:0 16px 12px}
+  .v-quick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 16px}
+  #vantMount .van-cell-group__title{padding-left:16px}
+  #vantMount .v-goal-title{font-weight:600}
+  #vantMount .van-cell__label{line-height:1.55}
+  #vantMount .v-meta{margin-bottom:8px}
+  #vantMount .v-tags{display:flex;flex-wrap:wrap;gap:6px}
+
+  /* ---------- B · shadcn 风格（zinc 中性 + 近黑主色） ---------- */
+  .phone.shadcn{background:#fafafa;color:#09090b}
+  .s-head{padding:24px 18px 4px}
+  .s-eyebrow{margin:0 0 6px;font-size:11px;letter-spacing:.1em;color:#a1a1aa}
+  .s-title{margin:0;font-size:24px;font-weight:650;letter-spacing:-.01em}
+  .s-body{padding:14px 14px 28px}
+  .s-card{background:#fff;border:1px solid #e4e4e7;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .s-vital{padding:14px 16px}
+  .s-row{display:flex;align-items:baseline;justify-content:space-between}
+  .s-label{font-size:13px;color:#71717a}
+  .s-num{font-size:28px;font-weight:650;letter-spacing:-.02em;line-height:1}
+  .s-progress{height:8px;margin:12px 0 10px;border-radius:999px;background:#f4f4f5;overflow:hidden}
+  .s-progress-fill{height:100%;width:47%;border-radius:999px;background:#18181b}
+  .s-legend{margin:0;font-size:11.5px;color:#a1a1aa}
+  .s-quick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .s-btn{height:40px;border-radius:10px;border:1px solid transparent;font-size:14px;font-weight:550;cursor:pointer;font-family:inherit;transition:background .15s}
+  .s-btn-primary{background:#18181b;color:#fafafa}
+  .s-btn-primary:hover{background:#27272a}
+  .s-btn-outline{background:#fff;border-color:#e4e4e7;color:#18181b}
+  .s-btn-outline:hover{background:#f4f4f5}
+  .s-sec{margin:20px 2px 8px;font-size:12.5px;font-weight:550;color:#71717a}
+  .s-list{padding:4px 0}
+  .s-item{display:flex;gap:10px;align-items:flex-start;padding:10px 16px}
+  .s-item+.s-item{border-top:1px solid #f4f4f5}
+  .s-ico{flex:none;width:24px;height:24px;margin-top:1px;border-radius:999px;display:grid;place-items:center}
+  .s-ico svg{width:13px;height:13px}
+  .s-ico-done{background:#f4f4f5;color:#18181b}
+  .s-ico-failed{background:#f4f4f5;color:#52525b}
+  .s-ico-redeemed{background:#fef3c7;color:#92400e}
+  .s-item-text{margin:0;font-size:13.5px;line-height:1.45}
+  .s-item-time{margin:2px 0 0;font-size:11.5px;color:#a1a1aa}
+  .s-goal{margin-top:10px;padding:14px 16px}
+  .s-goal-title{margin:0 0 4px;font-size:15.5px;font-weight:600;letter-spacing:-.01em}
+  .s-meta{margin:0 0 10px;font-size:12.5px;color:#71717a}
+  .s-badges{display:flex;flex-wrap:wrap;gap:6px}
+  .s-badge{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;border:1px solid transparent;font-size:12px;white-space:nowrap}
+  .s-badge-warm{background:#fef3c7;border-color:#fde68a;color:#92400e}
+  .s-badge-cold{background:#f4f4f5;border-color:#e4e4e7;color:#3f3f46}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <h1>同一屏，两张脸 —— 挑一个</h1>
+  <p>内容和信息完全一样，只有皮不一样。<br>看完点一个字母，我按它把整套原型重做（连你明天那批详细反馈一起）。</p>
+</header>
+
+<div class="cols">
+
+  <!-- ================= A · Vant 4（真组件，未魔改） ================= -->
+  <section class="col">
+    <span class="tag"><b>A</b> · Vant 4 · 手机原生感</span>
+    <div class="phone vant"><div id="vantMount"></div></div>
+    <p class="cap">组件库原味：现成的单元格、标签、进度条 —— 顺手、不费劲；蓝主色之后可以换成你的色。</p>
+  </section>
+
+  <!-- ================= B · shadcn 风格（token 同源，实装=shadcn-vue+Tailwind） ================= -->
+  <section class="col">
+    <span class="tag"><b>B</b> · shadcn 风格 · 产品设计感</span>
+    <div class="phone shadcn"><div class="s-wrap">
+      <header class="s-head">
+        <p class="s-eyebrow">RTARGET</p>
+        <h1 class="s-title">今天</h1>
+      </header>
+      <div class="s-body">
+        <div class="s-card s-vital">
+          <div class="s-row"><span class="s-label">活力值</span><span class="s-num">14</span></div>
+          <div class="s-progress"><div class="s-progress-fill"></div></div>
+          <p class="s-legend">低 5 · 中 10 · 高 20 · ALL IN 80%</p>
+        </div>
+
+        <div class="s-quick">
+          <button class="s-btn s-btn-primary">立新目标</button>
+          <button class="s-btn s-btn-outline">记待办</button>
+        </div>
+
+        <p class="s-sec">最近</p>
+        <div class="s-card s-list">
+          <div class="s-item">
+            <span class="s-ico s-ico-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span>
+            <div><p class="s-item-text">完成了「交上月水电费」 · +10 活力值</p><p class="s-item-time">24 分钟前</p></div>
+          </div>
+          <div class="s-item">
+            <span class="s-ico s-ico-failed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20v-7a4 4 0 0 0-4-4H4"/><path d="m9 14-5-5 5-5"/></svg></span>
+            <div><p class="s-item-text">没做到「晨跑三天」 · −5 活力值 · 已退回待办</p><p class="s-item-time">3 小时前</p></div>
+          </div>
+          <div class="s-item">
+            <span class="s-ico s-ico-redeemed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 13.6 9l4.5 1.6-4.5 1.6L12 16.7l-1.6-4.5L5.9 10.6 10.4 9Z"/><path d="M18.5 3.5v3M17 5h3"/></svg></span>
+            <div><p class="s-item-text">兑现了愿望「看一场电影」</p><p class="s-item-time">6 小时前</p></div>
+          </div>
+        </div>
+
+        <p class="s-sec">目标</p>
+        <div class="s-card s-goal">
+          <h3 class="s-goal-title">收拾阳台和杂物，扔掉废物</h3>
+          <p class="s-meta">剩 2 天 4 小时 · 押 中 10</p>
+          <div class="s-badges">
+            <span class="s-badge s-badge-warm">奖励 · 妮姬 灰姑娘 c108 立牌</span>
+            <span class="s-badge s-badge-cold">惩罚 · 强制执行</span>
+          </div>
+        </div>
+        <div class="s-card s-goal">
+          <h3 class="s-goal-title">把冰箱清一遍</h3>
+          <p class="s-meta">剩 18 小时 · 押 低 5</p>
+          <div class="s-badges">
+            <span class="s-badge s-badge-warm">奖励 · 看一场电影</span>
+            <span class="s-badge s-badge-cold">惩罚 · 手洗羽绒服</span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <p class="cap">中性克制：黑白灰 + 细边框 + 小圆角 —— Trae / Linear 那一挂的质感，层次靠留白不靠颜色。</p>
+  </section>
+
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/vant.min.js"></script>
+<script>
+  /* A 面：真 Vant 4 组件（本地 UMD，离线可开） */
+  const { createApp } = Vue
+  createApp({
+    data() {
+      return {
+        feed: [
+          { id: 1, text: '完成了「交上月水电费」 · +10 活力值', time: '24 分钟前' },
+          { id: 2, text: '没做到「晨跑三天」 · −5 活力值 · 已退回待办', time: '3 小时前' },
+          { id: 3, text: '兑现了愿望「看一场电影」', time: '6 小时前' },
+        ],
+        goals: [
+          { id: 'g1', title: '收拾阳台和杂物，扔掉废物', meta: '剩 2 天 4 小时 · 押 中 10', reward: '妮姬 灰姑娘 c108 立牌', penalty: '强制执行' },
+          { id: 'g2', title: '把冰箱清一遍', meta: '剩 18 小时 · 押 低 5', reward: '看一场电影', penalty: '手洗羽绒服' },
+        ],
+      }
+    },
+    template: `
+      <van-nav-bar title="今天" />
+      <van-cell-group inset>
+        <van-cell title="活力值" value="14" size="large" />
+        <div class="v-progress-wrap">
+          <van-progress :percentage="47" :show-pivot="false" :stroke-width="6" />
+        </div>
+        <van-cell title="低 5 · 中 10 · 高 20 · ALL IN 80%" :border="false" />
+      </van-cell-group>
+
+      <div class="v-quick">
+        <van-button type="primary" block round>立新目标</van-button>
+        <van-button plain block round>记待办</van-button>
+      </div>
+
+      <van-cell-group inset title="最近">
+        <van-cell v-for="f in feed" :key="f.id" :title="f.text" :label="f.time" />
+      </van-cell-group>
+
+      <van-cell-group inset title="目标">
+        <van-cell v-for="g in goals" :key="g.id">
+          <template #title><span class="v-goal-title">{{ g.title }}</span></template>
+          <template #label>
+            <div class="v-meta">{{ g.meta }}</div>
+            <div class="v-tags">
+              <van-tag type="warning" round size="medium">奖励 · {{ g.reward }}</van-tag>
+              <van-tag type="default" round size="medium">惩罚 · {{ g.penalty }}</van-tag>
+            </div>
+          </template>
+        </van-cell>
+      </van-cell-group>
+    `,
+  }).use(vant).mount('#vantMount')
+</script>
+
+</body>
+</html>

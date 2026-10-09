@@ -6,7 +6,7 @@
 前端 Vue3 + Supabase，**没有服务端代码** —— 客户端 + RLS + `security definer` 函数闭环。
 用 Capacitor 套成 Android 应用；纯前端改动走 OTA 直接更新，不用重新装包。
 
-> ⚠️ **机制的唯一真相在 [`docs/mechanism.md`](docs/mechanism.md)（当前 v1.6）。**
+> ⚠️ **机制的唯一真相在 [`docs/mechanism.md`](docs/mechanism.md)（当前 v2.0）。**
 > 要改机制，**先改它、再改代码** —— 否则文档立刻变成谎话。
 > 这份 README 只讲「东西在哪、怎么跑」。
 
@@ -16,26 +16,21 @@
 
 一个全局的**活力值**血池，所有存档共用，初始 10。
 
-立一个目标会同时落下三个节点：
-
-```
-        ┌─ A  目标本身      押注 N 分，到死线没申报 → 判负
-目标 ───┼─ B  奖励           A 达成时到账
-        └─ C  惩罚           A 判负时立刻扣分，并被拉进「惩罚复合体」
-```
-
-**惩罚复合体**是这套系统的牙齿：A 一判负就进复合体，在 C 的死线之前 ——
+立一个目标 = **押一件事**，一次定死六样：要做什么（可从待办里挑）、死线（具体时刻）、
+押注档位、奖励（可从愿望里挑）、惩罚、怎么做。
 
 | 你做了什么 | 结果 |
 |---|---|
-| A 和 C 都做回来 | 两笔扣分**全部返还** |
-| 只做一个 | 不返还、也不再追扣 |
-| 都没做 | **再扣一次 A + C** |
+| **做到**（手动申报） | **+S**，奖励当场兑现，来源待办消耗一格 |
+| **做不到**（到点没申报 / 主动放弃） | **−S**，奖励作废，来源待办退回清单（次数不动） |
 
-结算是**惰性**的：打开应用时才跑一次（`settle_all`），没有后台任务、不发推送。
+**一锤子结清** —— 没有第二阶段、没有补做窗口、没有返还。
+主动放弃就是提前判负，效果与超时完全一致。
+
+结算是**惰性**的：打开应用时才跑一次（`settle_goals`），没有后台任务、不发推送。
 判定用的是**死线时刻本身**，所以隔几天才打开也不会少扣 —— 只是"扣分"发生得晚。
 
-档位、封档、次数、备注这些细节都在 [`docs/mechanism.md`](docs/mechanism.md)。
+档位分值、封档、待办次数这些细节都在 [`docs/mechanism.md`](docs/mechanism.md)。
 
 ---
 
@@ -43,7 +38,8 @@
 
 | 路径 | 是什么 |
 |---|---|
-| `app/` | 前端（Vue3 + TS + Vite + Ant Design Vue 4 + Tailwind 4），含 Capacitor 的 Android 工程。<br>**它的 [README](app/README.md) 是前端与套壳的实现文档**，很全，先看那份 |
+| `app/` | 前端（Vue3 + TS + Vite + **Vant 4** + Tailwind 4），含 Capacitor 的 Android 工程。<br>**它的 [README](app/README.md) 是前端与套壳的实现文档**，很全，先看那份 |
+| `../rtarget-desktop/` | **桌面端（Tauri v2）**，独立目录、不在本仓库内 —— 与 `app/` 共用同一份前端源码，只做窗口与打包。<br>[它的 README](../rtarget-desktop/README.md) 说明怎么跑、怎么出安装包 |
 | `docs/mechanism.md` | **机制的唯一真相**，改了机制必须先改它 |
 | `docs/feedback.md` | 反馈清单 + 每条的处理情况对照表 |
 | `supabase/migrations/` | 数据库迁移。**按编号顺序、手动在 SQL Editor 跑** |
@@ -55,15 +51,18 @@
 
 ### 1. 数据库
 
-Supabase 的 SQL Editor 里**按编号顺序**跑 `supabase/migrations/*.sql`，目前到 **`0019`**。
+Supabase 的 SQL Editor 里**按编号顺序**跑 `supabase/migrations/*.sql`，目前到 **`0020`**。
 
 > ⚠️ **`0015` ~ `0018` 属于「不跑前端就报错」的硬门槛** —— 前端会读写那些新表 / 新列，
 > 没跑的话一打开就报错（不是静默降级）。
 > 所以顺序永远是：**先跑迁移，再更新前端。**
 >
-> `0019` 不一样：它把 `settle_all` / `seal_archive` 改成并发安全的「认领式」，
-> **跑不跑都能用** —— 只是不跑的话，「连点完成 / 放弃 / 封档」仍有很窄的重复记账窗口
-> （重复加分 = 刷分）。**建议跑。**
+> `0019` 把 `settle_all` / `seal_archive` 改成并发安全的「认领式」。
+>
+> ⚠️ **`0020` 是 v2.0 机制落地，且不可逆**：删掉旧的 `nodes` 三节点表；
+> 按用户的「数据只留愿望和待办，历史数据不要了」**清空流水与存档**
+> （活力值重置为初始 10，每个用户补一个空档）；重建 `goals` / `records` 并换掉整个结算引擎。
+> **跑之前想清楚 —— 目标与流水会一起没。**
 
 跑完可以单独跑对应的 `supabase/tests/00xx_check.sql` 确认，例如 0018 应该看到两行。
 
@@ -110,7 +109,7 @@ Gradle 国内镜像、内存爆掉…）都在 [`app/README.md`](app/README.md)�
 | 报错 `Failed to fetch` / `JWT issued at future` 是什么意思 | 同上 § 报错怎么读 |
 | 某条反馈处理没有 | [`docs/feedback.md`](docs/feedback.md) |
 | 打包慢 / 内存爆 / 国内源 | 同上 § 国内镜像、§ 内存 |
-| 没登录也想看排版 | 同上 § 排版自查（`preview.html` 假数据 + `phone.html` 真机宽度） |
+| 没登录也想看排版 | 同上 § 排版自查（`phone.html` 真机宽度 iframe） |
 
 ---
 
@@ -119,10 +118,12 @@ Gradle 国内镜像、内存爆掉…）都在 [`app/README.md`](app/README.md)�
 - **不入库**：`reasonix.toml` / `.reasonix/`、`.env*`、`*.keystore` / `*.jks`、
   `*.apk`、`release/` —— `.gitignore` 已经挡好了，别用 `git add -A` 硬加
 - **改机制 = 先改 `docs/mechanism.md`**，再改代码
-- **迁移按编号手动跑**，不要跳号。注意有覆盖关系：
-  `settle_all` 的当前实现看 **0010**（0001 是初版，被 0009 / 0010 覆盖过两次）
-- **C 的死线必须晚于 A**（硬约束）：C 一旦早于 A，A 到点那一刻 C 就已经过期，
-  复合体会在同一次结算里直接走完"都没完成"—— 这正是 0010 修掉的那个 bug
+- **迁移按编号手动跑**，不要跳号。当前结算引擎在 **`0020_goals_v2.sql`**
+  （`settle_goals` / `complete_goal` / `giveup_goal` / `seal_archive` / `delete_archive`；
+  它同时删掉旧的 `nodes` 三节点表，v1.x 的迁移只剩历史价值）
+- **记账一律用「认领式」条件更新**：`update ... where <还在旧状态> returning id into claimed;`
+  `if claimed is null then ... end if;` 并且**每轮开头先把 claimed 置空** ——
+  影响 0 行时 `returning into` 不会清空变量（0019 踩过）
 - **自检 SQL 的最后一句必须是 `select`**：SQL Editor 只展示最后一条语句的结果，
   以 `rollback` 结尾会把输出全吞掉
 

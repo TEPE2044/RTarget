@@ -1,10 +1,10 @@
 import { supabase } from './supabase'
 
-// ---------- 类型（与 supabase/migrations/0001_init.sql 对应） ----------
+// ---------- 类型（与 supabase/migrations/0020_goals_v2.sql 对应） ----------
 
-export type NodeKind = 'A' | 'B' | 'C'
 export type Tier = 'low' | 'mid' | 'high' | 'allin'
-export type NodeStatus = 'bound' | 'active' | 'settled'
+export type GoalStatus = 'active' | 'done' | 'failed'
+export type RecordType = 'created' | 'done' | 'failed' | 'sealed'
 
 export interface Archive {
   id: string
@@ -15,51 +15,48 @@ export interface Archive {
   sealed_free: boolean | null
 }
 
-export interface GameNode {
+/** 一个目标 = 一个奖励 + 一个惩罚，一锤子结清 */
+export interface Goal {
   id: string
-  archive_id: string
   user_id: string
-  kind: NodeKind
-  parent_id: string | null
+  archive_id: string
   content: string
   tier: Tier
+  /** 押注分值快照（ALL IN = 设立时的活力值 × 80%） */
   stake: number
   due_at: string
-  status: NodeStatus
-  created_at: string
-  completed_at: string | null
-  compound_a_done: boolean | null
-  compound_c_done: boolean | null
-  /** 奖励 B 来自愿望单时有值；手输的奖励为 null（0015） */
-  wish_id: string | null
-  /** 目标 A 来自目标单时有值；手输的目标为 null（0016） */
+  reward: string
+  /** 奖励来自愿望单时有值；手输的为 null */
+  reward_wish_id: string | null
+  penalty: string
+  /** 执行区正文（Markdown，随时可改） */
+  exec: string
+  /** 目标来自待办时有值；自己写的为 null */
   todo_id: string | null
-  /** 备忘录：从待办立项时快照过来（只有 A 会有值，0018） */
-  note: string
+  status: GoalStatus
+  settled_at: string | null
+  created_at: string
 }
-
-// ---------- 目标单 ----------
 
 export type TodoStatus = 'open' | 'taken' | 'done'
 
 export interface Todo {
   id: string
   user_id: string
+  /** 标题 */
   content: string
-  /** open 待办 / taken 已立项（移出清单）/ done 直接勾掉、或者格数用完了 */
+  /** open 待办 / taken 已立项（移出清单）/ done 勾掉或用完 */
   status: TodoStatus
-  /** 总格数。默认 1 = 一次性的；> 1 就是"打算重复做的事"（0017） */
+  /** 总格数。默认 1 = 一次性的；> 1 就是"打算重复做的事" */
   times_total: number
   /** 还剩几格。来源目标完成一次扣一格，扣到 0 就变成 done */
   times_left: number
-  /** 备忘录：这条待办要怎么做、有什么要记的（0018） */
+  /** 内容（Markdown，默认空） */
   note: string
   done_at: string | null
   taken_at: string | null
   created_at: string
 }
-
-// ---------- 愿望单 ----------
 
 export type WishStatus = 'open' | 'done'
 
@@ -69,14 +66,13 @@ export interface Wish {
   content: string
   status: WishStatus
   done_at: string | null
-  /** 在哪个存档里兑现的，仅作展示；存档删掉后会变 null */
   done_archive_id: string | null
   created_at: string
 }
 
 export interface LedgerEntry {
   id: number
-  node_id: string | null
+  goal_id: string | null
   archive_id: string | null
   reason: string | null
   note: string | null
@@ -84,22 +80,36 @@ export interface LedgerEntry {
   created_at: string
 }
 
+/** 动态 / 历史记录（首页「最近」与历史页共用） */
+export interface RecordItem {
+  id: number
+  archive_id: string | null
+  type: RecordType
+  text: string
+  created_at: string
+}
+
 // ---------- 档位分值 ----------
 
-export const TIER_STAKE: Record<Tier, number | null> = {
-  low: 5,
-  mid: 10,
-  high: 20,
-  allin: null, // ALL IN = 当前活力值 × 0.8，调用方传入快照
+export const TIER_STAKE: Record<Exclude<Tier, 'allin'>, number> = { low: 5, mid: 10, high: 20 }
+
+/** ALL IN = 当前活力值 × 80%（四舍五入，最低 1） */
+export function allInStake(vitality: number): number {
+  return Math.max(1, Math.round(vitality * 0.8))
 }
+
+export function stakeOf(tier: Tier, vitality: number): number {
+  return tier === 'allin' ? allInStake(vitality) : TIER_STAKE[tier]
+}
+
+export const TIER_LABEL: Record<Tier, string> = { low: '低', mid: '中', high: '高', allin: 'ALL IN' }
 
 // ---------- 核心操作 ----------
 
 /**
  * 取当前登录用户。
- * 这里刻意把 getUser 的 error 原样抛出（而不是统一成"未登录"）：
- * 账号被删除 / token 失效时错误里带 status（401/403），
- * 上层才能用 isAuthError() 识别出来、把人踢回登录页。
+ * 刻意把 getUser 的 error 原样抛出（而不是统一成"未登录"）：账号被删 / token 失效时
+ * 错误里带 status（401/403），上层才能用 isAuthError() 识别出来、把人踢回登录页。
  */
 async function requireUser() {
   const { data: { user }, error } = await supabase.auth.getUser()
@@ -108,28 +118,24 @@ async function requireUser() {
   return user
 }
 
-/** 惰性结算：打开应用 / 任何关键操作后调用（幂等） */
+/** 惰性结算：打开应用 / 关键操作后调用（幂等）—— 到点未申报的目标在这里判负 */
 export async function settleAll() {
-  // 函数签名为 settle_all(p_user_id uuid)，必须显式传参
   // 顺带当成一次登录态体检：账号被删时，只有打到服务端的请求才会暴露问题
   const user = await requireUser()
-  const { error } = await supabase.rpc('settle_all', { p_user_id: user.id })
+  const { error } = await supabase.rpc('settle_goals', { p_user_id: user.id })
   if (error) throw error
 }
 
 /** 当前活力值（流水求和） */
 export async function getVitality(): Promise<number> {
-  const { data, error } = await supabase
-    .from('vitality_ledger')
-    .select('amount')
+  const { data, error } = await supabase.from('vitality_ledger').select('amount')
   if (error) throw error
-  // 四舍五入取整（文档 v1.0：积分不要小数）
   const sum = (data as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0)
   return Math.round(sum)
 }
 
 /** 流水账（最近 n 笔） */
-export async function getLedger(limit = 50): Promise<LedgerEntry[]> {
+export async function getLedger(limit = 100): Promise<LedgerEntry[]> {
   const { data, error } = await supabase
     .from('vitality_ledger')
     .select('*')
@@ -139,19 +145,32 @@ export async function getLedger(limit = 50): Promise<LedgerEntry[]> {
   return data as LedgerEntry[]
 }
 
-/** 开新存档 */
-export async function createArchive(name: string): Promise<Archive> {
-  const user = await requireUser()
+// ---------- 动态 / 记录 ----------
+
+/** 全局最近的动态（首页「最近」），新的在前 */
+export async function getRecentRecords(limit = 20): Promise<RecordItem[]> {
   const { data, error } = await supabase
-    .from('archives')
-    .insert({ name, user_id: user.id })
-    .select()
-    .single()
+    .from('records')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
   if (error) throw error
-  return data as Archive
+  return data as RecordItem[]
 }
 
-/** 存档列表（open 在前，sealed 在后） */
+/** 某个存档的记录（历史页），新的在前 */
+export async function getRecords(archiveId: string): Promise<RecordItem[]> {
+  const { data, error } = await supabase
+    .from('records')
+    .select('*')
+    .eq('archive_id', archiveId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data as RecordItem[]
+}
+
+// ---------- 存档 ----------
+
 export async function getArchives(): Promise<Archive[]> {
   const { data, error } = await supabase
     .from('archives')
@@ -161,110 +180,99 @@ export async function getArchives(): Promise<Archive[]> {
   return data as Archive[]
 }
 
+/** 开新存档 */
+export async function createArchive(name: string): Promise<Archive> {
+  const user = await requireUser()
+  const { data, error } = await supabase
+    .from('archives')
+    .insert({ name: name.trim(), user_id: user.id })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Archive
+}
+
+/** 封档：有未了结扣当前活力值 10%，全了结免费。返回扣分（≤ 0） */
+export async function sealArchive(archiveId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('seal_archive', { p_archive_id: archiveId })
+  if (error) throw error
+  return Number(data)
+}
+
+/** 删除已封档的存档。返回被解绑的流水笔数（活力值不变） */
+export async function deleteArchive(archiveId: string): Promise<number> {
+  await requireUser()
+  const { data, error } = await supabase.rpc('delete_archive', { p_archive_id: archiveId })
+  if (error) throw error
+  return Number(data)
+}
+
+// ---------- 目标 ----------
+
+/** 全部目标（跨存档），新的在前 */
+export async function getGoals(): Promise<Goal[]> {
+  const { data, error } = await supabase
+    .from('goals')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data as Goal[]
+}
+
 /**
- * 设立目标：A + 预绑 B + 预绑 C，三节点原子写入
- * - 档位继承：B/C 无独立档位，分值 = A 的档位分值（ALL IN 同样继承快照）
- * - 死线各自独立，且**都是具体时刻**（v1.4）：A 用 dueAt，到点即判负；
- *   C 用 penaltyDueAt，**日期**在 A 当天起 3 天内、**时刻必须晚于 A**，
- *   这段就是惩罚复合体的补做窗口；B 无时限，due_at 沿用 A 的仅作展示
- * - 奖励 B 可以来自愿望单（reward.wishId），也可以是临时手输。
- *   目标 A 可以来自目标单（todoId），同样可以临时手输。
- *   content 始终写当时的文案快照 —— 清单里以后改了名，不影响已经立过的目标；
- *   备注（note）同理，立项时从那条第待办快照过来
+ * 设立目标。
+ * - 押注分值在这里快照下来（ALL IN 用当时的活力值）
+ * - 目标从待办来时：content 与 exec 都取当时的文案快照，并把那条待办移出清单（taken）
+ * - 奖励从愿望单来时：记下 wish_id，达成那一刻由 complete_goal 划掉它
  */
 export async function createGoal(input: {
   archiveId: string
   content: string
   tier: Tier
-  dueAt: string
-  penaltyDueAt: string
-  reward: { content: string; wishId?: string | null }
-  penalty: { content: string }
   vitality: number
-  /** 目标 A 的来源；从目标单选的时候填，手输留空 */
+  dueAt: string
+  reward: string
+  rewardWishId?: string | null
+  penalty: string
+  exec?: string
   todoId?: string | null
-  /** 备忘录：从目标单立项时，把那条待办的备注**快照**过来（0018） */
-  note?: string | null
-}): Promise<string> {
+}): Promise<Goal> {
   const user = await requireUser()
-  // 活力值四舍五入取整（文档 v1.0：不要小数点）
-  const stake = input.tier === 'allin' ? Math.round(input.vitality * 0.8) : TIER_STAKE[input.tier]!
+  const stake = stakeOf(input.tier, input.vitality)
 
-  // C 的**日期**只能落在 A 当天起 3 天内（v1.6 放宽；此前是"A 之后 1~3 天"），
-  // 且**必须晚于 A 的死线** —— 下半段那个 cAt <= aAt 就是这条，不能省：
-  // C 早于 A 的话，A 一到点 C 也已经过期，复合体开出来就是死的（0010 修过的 bug）。
-  //
-  // 日期按「日历天」算，不能拿毫秒差除以一天：
-  // A = 8/1 23:00、C = 8/2 01:00 的毫秒差只有 0.08 天，
-  // 四舍五入成 0 天，会被误判成"不在 0~3 天内"直接拦掉。
-  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  const aAt = new Date(input.dueAt)
-  const cAt = new Date(input.penaltyDueAt)
-  const gapDays = Math.round((dayStart(cAt) - dayStart(aAt)) / 86_400_000)
-  // 0 = 当天（这时必须配一个晚于 A 的时刻，由下面那句兜住）
-  if (gapDays < 0 || gapDays > 3) {
-    throw new Error('惩罚 C 的日期只能是 A 当天起 3 天内')
-  }
-  if (cAt <= aAt) {
-    throw new Error('惩罚 C 的到期时刻必须晚于 A 死线')
-  }
-
-  const { data: aNode, error: aErr } = await supabase
-    .from('nodes')
+  const { data, error } = await supabase
+    .from('goals')
     .insert({
-      archive_id: input.archiveId,
       user_id: user.id,
-      kind: 'A',
-      content: input.content,
-      todo_id: input.todoId ?? null,
-      // 备注快照：那条待办以后改了备注，也不影响已经立过的目标
-      note: input.note?.trim() ?? '',
+      archive_id: input.archiveId,
+      content: input.content.trim(),
       tier: input.tier,
       stake,
       due_at: input.dueAt,
-      status: 'active',
+      reward: input.reward.trim(),
+      reward_wish_id: input.rewardWishId ?? null,
+      penalty: input.penalty.trim(),
+      exec: input.exec ?? '',
+      todo_id: input.todoId ?? null,
     })
     .select()
     .single()
-  if (aErr) throw aErr
+  if (error) throw error
+  const goal = data as Goal
 
-  // B/C 继承 A 的档位与分值；C 用自己的独立死线（复合体窗口）
-  const children = [
-    {
-      archive_id: input.archiveId,
+  // 立项动态（写失败不阻塞主流程：目标已经立上了）
+  try {
+    await supabase.from('records').insert({
       user_id: user.id,
-      kind: 'B' as NodeKind,
-      parent_id: (aNode as GameNode).id,
-      content: input.reward.content,
-      wish_id: input.reward.wishId ?? null,
-      tier: input.tier,
-      stake,
-      due_at: input.dueAt, // B 无时限，仅作展示
-      status: 'bound' as NodeStatus, // A 达成前 B 处于 bound
-    },
-    {
       archive_id: input.archiveId,
-      user_id: user.id,
-      kind: 'C' as NodeKind,
-      parent_id: (aNode as GameNode).id,
-      content: input.penalty.content,
-      tier: input.tier,
-      stake,
-      due_at: input.penaltyDueAt, // 独立死线：A 判负后这段时间内可补做
-      status: 'bound' as NodeStatus, // A 判负前 C 处于 bound
-    },
-  ]
-
-  const { error: childErr } = await supabase.from('nodes').insert(children)
-  if (childErr) {
-    // 回滚 A（无事务支持时的手动补偿）
-    await supabase.from('nodes').delete().eq('id', (aNode as GameNode).id)
-    throw childErr
+      type: 'created',
+      text: `立了「${goal.content}」 · 押 ${goal.stake}`,
+    })
+  } catch {
+    /* 忽略 */
   }
 
-  // 立项成功 → 把目标单里那条移出清单（taken）。
-  // 放在最后做：万一上面写节点失败了，就别去动人家的清单。
-  // 同样是附加效果，失败不阻塞（清单里多留一条，比目标没立成好）。
+  // 目标单里那条移出清单。放最后做 —— 上面失败了就别去动人家的清单。
   if (input.todoId) {
     try {
       await supabase
@@ -277,283 +285,38 @@ export async function createGoal(input: {
     }
   }
 
-  return (aNode as GameNode).id
+  return goal
 }
 
-/** 获取某存档的全部节点 */
-export async function getNodes(archiveId: string): Promise<GameNode[]> {
-  const { data, error } = await supabase
-    .from('nodes')
-    .select('*')
-    .eq('archive_id', archiveId)
-    .order('created_at')
-  if (error) throw error
-  return data as GameNode[]
-}
-
-/** 当前用户全部节点（跨存档）——首页统计、下拉红点、历史页都用它 */
-export async function getAllNodes(): Promise<GameNode[]> {
-  const { data, error } = await supabase
-    .from('nodes')
-    .select('*')
-    .order('created_at')
-  if (error) throw error
-  return data as GameNode[]
-}
-
-/**
- * A 是否正处在惩罚复合体里
- * 判据用 C 的状态而不是 A.completed_at：A 判负后用户补完 A 会写 completed_at，
- * 但那时复合体还没结算，卡片必须继续显示为复合体。
- */
-export function inCompound(a: GameNode, c: GameNode | null): boolean {
-  return a.kind === 'A' && a.status === 'settled' && a.compound_a_done === null
-    && !!c && c.status !== 'bound'
-}
-
-/** 存档是否"正在进行"（还有未了结的节点）——下拉列表红点用 */
-export function hasPending(nodes: GameNode[], archiveId: string): boolean {
-  return nodes.some((n) => n.archive_id === archiveId && n.status === 'active')
-}
-
-/** 按存档汇总流水净额（历史页看每个档的收支） */
-export async function getArchiveLedgerSums(): Promise<Record<string, number>> {
-  const { data, error } = await supabase
-    .from('vitality_ledger')
-    .select('archive_id, amount')
-  if (error) throw error
-  const sums: Record<string, number> = {}
-  for (const r of data as { archive_id: string | null; amount: number }[]) {
-    if (!r.archive_id) continue
-    sums[r.archive_id] = (sums[r.archive_id] ?? 0) + Number(r.amount)
-  }
-  return sums
-}
-
-/** 从流水里找某存档的封档扣分（note 以"封档"开头的那笔） */
-export function findSealPenalty(ledger: LedgerEntry[], archiveId: string): number | null {
-  const hit = ledger.find(
-    (l) => l.archive_id === archiveId && (l.note ?? '').startsWith('封档')
-  )
-  return hit ? hit.amount : null
-}
-
-/**
- * 主动申报完成（手动结算的唯一入口）
- * - A active 时点击 → A 完成 → 开启 B（bound→active）
- * - A settled（复合体中）时点击 → 记为 A 补完，等复合体结算
- * - C active 时点击 → 记为 C 完成，等复合体结算
- * - B active 时点击 → 立刻 +B 分（流水 b_completed）
- * 完成后调用 settleAll 推进复合体结算（若条件满足）
- */
-/**
- * 认领一个节点：把它推进到终态，**只有真的抢到才返回 true**。
- *
- * ⚠️ 这是本文件里最重要的一道防护，别改回"先 SELECT 判断、再无条件 UPDATE"。
- *
- * 那种写法是 check-then-act：连点两下时两个请求都会读到 `status='active'`、
- * 都通过内存里的守卫，然后**各插一条流水** —— 分就多加了一份。
- * （Jackie 报的「完成按钮没有防抖，点多几次就能获得更多分数」就是这个。）
- *
- * 条件更新只是**一条 SQL**：Postgres 的行锁保证并发时只有一个能匹配到
- * `status='active'`；第二个请求等锁后重新评估 WHERE，发现状态已经变了 → 影响 0 行。
- * 所以这道防护是**数据库层**的，不依赖前端的按钮禁用 ——
- * 前端的禁用只能减少误触，挡不住重试、双开、慢网络下的重复提交。
- */
-async function claimNode(nodeId: string, patch: Record<string, unknown> = {}) {
-  const { data, error } = await supabase
-    .from('nodes')
-    .update({ status: 'settled', completed_at: new Date().toISOString(), ...patch })
-    .eq('id', nodeId)
-    .eq('status', 'active')
-    .is('completed_at', null)
-    .select('id')
-  if (error) throw error
-  return (data?.length ?? 0) > 0
-}
-
-export async function completeNode(nodeId: string) {
-  await requireUser() // 只做登录态体检，这里用不到 user 本身
-  const { data: node, error: fetchErr } = await supabase
-    .from('nodes')
-    .select('*')
-    .eq('id', nodeId)
-    .single()
-  if (fetchErr) throw fetchErr
-  const n = node as GameNode
-
-  // 这一小段只是"提前告知"（省掉一次写请求），**不是防重复的防线** ——
-  // 并发时两个请求都会读到旧值、都走到这儿。真正防重复的是下面每个分支里的
-  // 条件更新（claimNode / 带 `is('completed_at', null)` 的认领）。
-  if (n.completed_at) return
-  if (n.status === 'settled' && n.compound_a_done !== null) return
-
-  // 死线是「到点即判负」—— 过了就不能再申报。
-  //
-  // 为什么必须有这条：结算是**惰性**的（只在 refresh 时跑），而界面上的"已超时"
-  // 是按当前时间实时算的。应用开着跨过死线时，界面已经显示"已超时"，库里却还是
-  // active —— 这时点一下"完成"，A 会被当成按时完成、B 跟着解锁加分，等于白拿奖励。
-  //
-  // B 不受这条约束：它无时限，due_at 只是继承 A 做展示。
-  if (n.kind !== 'B' && n.status === 'active' && new Date(n.due_at) <= new Date()) {
-    throw new Error('已经过了死线，这一条已判负 —— 刷新后会进入惩罚复合体')
-  }
-
-  // B：确认享受完毕（分早已到账，这里只是记账标记，无时限）
-  if (n.kind === 'B' && n.status === 'active') {
-    // 抢不到 = 别人已经确认过了。这里没有记账，但同样走认领，免得重复触发结算
-    if (!(await claimNode(nodeId))) return
-    await settleAll()
-    return
-  }
-
-  // A：active → 完成，立刻奖励 B（分先到账，B 等待用户点"确认"标记，无时限）
-  if (n.kind === 'A' && n.status === 'active') {
-    // ★ 认领这一步决定了「连点会不会多加分」——
-    // 抢不到就说明这一次是重复提交，直接收工，**不进下面任何一条记账**
-    if (!(await claimNode(nodeId))) return
-    // B 开启为 active（待确认），同时立刻加分
-    const { data: bNode, error: bFetchErr } = await supabase
-      .from('nodes')
-      .select('*')
-      .eq('parent_id', nodeId)
-      .eq('kind', 'B')
-      .eq('status', 'bound')
-      .single()
-    if (bFetchErr) throw bFetchErr
-    const { error: bErr } = await supabase
-      .from('nodes')
-      .update({ status: 'active' })
-      .eq('id', (bNode as GameNode).id)
-    if (bErr) throw bErr
-    const { error: ledErr } = await supabase.from('vitality_ledger').insert({
-      user_id: n.user_id,
-      node_id: (bNode as GameNode).id,
-      archive_id: n.archive_id,
-      reason: 'b_completed',
-      amount: Math.round((bNode as GameNode).stake),
-    })
-    if (ledErr) throw ledErr
-
-    // 这个奖励是从愿望单里挑的话，愿望到此兑现 → 标记已实现。
-    // 附加效果：失败也不该让主流程看起来出错（分已经加过了、A 也已经完成），
-    // 所以这里吞掉异常，只是愿望会留在未实现里，用户还能手动标记。
-    const wishId = (bNode as GameNode).wish_id
-    if (wishId) {
-      try {
-        await setWishDone(wishId, n.archive_id)
-      } catch {
-        /* 忽略 */
-      }
-    }
-
-    // 同理：这条目标是从目标单挑来的话，消耗掉那条待办的一格（0017）
-    try {
-      await consumeTodoSlot(n.todo_id)
-    } catch {
-      /* 忽略 */
-    }
-
-    await settleAll()
-    return
-  }
-
-  // A 补做（已判负、复合体还没结算）：C 的窗口一过就不能再补。
-  // 否则"事后点一下"就能把已经判负的账全额要回来，同样是白拿分。
-  // （C 自己的时限由上面那条统一守卫管，这里只管 A 的补做路径。）
-  if (n.kind === 'A') {
-    const { data: cn } = await supabase
-      .from('nodes')
-      .select('due_at')
-      .eq('parent_id', n.id)
-      .eq('kind', 'C')
-      .maybeSingle()
-    if (cn && new Date((cn as { due_at: string }).due_at) <= new Date()) {
-      throw new Error('惩罚 C 的补做窗口已经关闭 —— 刷新后会按复合体结算')
-    }
-  }
-
-  // A 复合体补完 / C 完成：只记完成时间，结算交给 settleAll。
-  //
-  // 这里是**认领式**的：节点此时已经是 settled（判负），所以条件用 completed_at 而不是
-  // status。抢不到 = 已经申报过 → 直接收工，别再扣待办格子、也别再触发一次结算
-  //（复合体的返还是 settle_all 里记账的，重复触发会有重复返还的风险）。
-  const { data: claimed, error } = await supabase
-    .from('nodes')
-    .update({ completed_at: new Date().toISOString() })
-    .eq('id', nodeId)
-    .is('completed_at', null)
-    .select('id')
-  if (error) throw error
-  if (!claimed?.length) return
-
-  // A 的补做也算「最终完成了」，同样扣一格。
-  // （C 没有 todo_id，传进去也是空转；B 走不到这里。）
-  if (n.kind === 'A') {
-    try {
-      await consumeTodoSlot(n.todo_id)
-    } catch {
-      /* 忽略 */
-    }
-  }
-
-  await settleAll()
-}
-
-/** 主动放弃（= 主动判负，效果等同超时；文字订正：不是"认输"） */
-export async function concedeNode(nodeId: string) {
-  const { data: node, error: fetchErr } = await supabase
-    .from('nodes')
-    .select('*')
-    .eq('id', nodeId)
-    .single()
-  if (fetchErr) throw fetchErr
-  const n = node as GameNode
-
-  if (n.status !== 'active') return
-  if (n.completed_at) return // 已申报完成，不再接受放弃
-
-  // 把 due_at 挪到过去，让 settleAll 走超时分支（复用同一结算路径，避免两套逻辑）。
-  // 认领式：抢不到说明这一瞬间已经被放弃/完成了，别重复触发结算。
-  const { data: claimed, error } = await supabase
-    .from('nodes')
-    .update({ due_at: new Date(Date.now() - 1000).toISOString() })
-    .eq('id', nodeId)
-    .eq('status', 'active')
-    .is('completed_at', null)
-    .select('id')
-  if (error) throw error
-  if (!claimed?.length) return
-
-  await settleAll()
-}
-
-/** 封档：有未了结之事扣当前活力值 10%；全部了结的免费。返回扣分（负数或 0） */
-export async function sealArchive(archiveId: string): Promise<number> {
-  const { data, error } = await supabase.rpc('seal_archive', { p_archive_id: archiveId })
-  if (error) throw error
-  return Number(data)
-}
-
-/**
- * 删除一个已封档的存档。返回被解绑的流水笔数。
- * 只会删掉存档和它的节点；活力值流水保留（只断开归属），所以分数不变。
- * 未封档的存档删不掉，会由函数抛错。
- */
-export async function deleteArchive(archiveId: string): Promise<number> {
-  // 先做一次登录态体检，账号失效时抛出的错误带 401/403，上层才能识别并踢回登录页
+/** 改执行区正文（随写随存） */
+export async function updateGoalExec(id: string, exec: string) {
   await requireUser()
-  const { data, error } = await supabase.rpc('delete_archive', { p_archive_id: archiveId })
+  const { error } = await supabase.from('goals').update({ exec }).eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * 做到：返回实际加到的分（0 = 没抢到 / 已经判负了）。
+ * 加分、写记录、划愿望、扣待办格子全在服务端一个函数里，原子完成。
+ */
+export async function completeGoal(goalId: string): Promise<number> {
+  await requireUser()
+  const { data, error } = await supabase.rpc('complete_goal', { p_goal_id: goalId })
   if (error) throw error
   return Number(data)
+}
+
+/** 做不到（主动放弃，效果同到点判负）：扣分 + 退回待办（次数不动） */
+export async function giveUpGoal(goalId: string): Promise<{ lost: number; returned: boolean }> {
+  await requireUser()
+  const { data, error } = await supabase.rpc('giveup_goal', { p_goal_id: goalId })
+  if (error) throw error
+  const r = (data ?? {}) as { lost?: number; returned?: boolean }
+  return { lost: Number(r.lost ?? 0), returned: r.returned === true }
 }
 
 // ---------- 愿望单 ----------
 
-/**
- * 全部愿望。排序交给调用方分组（未实现 / 已实现），
- * 这里只保证同一组内新的在前。
- */
 export async function getWishes(): Promise<Wish[]> {
   const { data, error } = await supabase
     .from('wishes')
@@ -563,7 +326,6 @@ export async function getWishes(): Promise<Wish[]> {
   return data as Wish[]
 }
 
-/** 往愿望单里加一条 */
 export async function createWish(content: string): Promise<Wish> {
   const user = await requireUser()
   const { data, error } = await supabase
@@ -575,17 +337,12 @@ export async function createWish(content: string): Promise<Wish> {
   return data as Wish
 }
 
-/** 改文案。已实现的也能改（只是改个说法） */
 export async function updateWish(id: string, content: string) {
   await requireUser()
-  const { error } = await supabase
-    .from('wishes')
-    .update({ content: content.trim() })
-    .eq('id', id)
+  const { error } = await supabase.from('wishes').update({ content: content.trim() }).eq('id', id)
   if (error) throw error
 }
 
-/** 彻底删掉。历史里的奖励不受影响 —— B 存的是当时的内容快照 */
 export async function deleteWish(id: string) {
   await requireUser()
   const { error } = await supabase.from('wishes').delete().eq('id', id)
@@ -593,10 +350,7 @@ export async function deleteWish(id: string) {
 }
 
 /**
- * 标记已实现。
- * 两个入口共用：A 达成时自动标记（见 completeNode），以及用户手动标记
- * （有些愿望不是靠押注系统达成的）。
- * 带 status='open' 条件 → 幂等，重复调用不会覆盖首次的 done_at。
+ * 标记已实现（带 status='open' 条件 → 幂等，重复调用不覆盖首次的 done_at）
  */
 export async function setWishDone(id: string, archiveId: string | null = null) {
   const { error } = await supabase
@@ -617,12 +371,9 @@ export async function reopenWish(id: string) {
   if (error) throw error
 }
 
-// ---------- 目标单 ----------
+// ---------- 待办 ----------
 
-/**
- * 全部待办。taken（已立项）的**不返回** —— 它已经从清单里移出了，
- * 事情在「执行」页里继续。想看它去了哪，反查 nodes.todo_id。
- */
+/** 全部待办。taken（已立项）的不返回 —— 它已经移出清单了 */
 export async function getTodos(): Promise<Todo[]> {
   const { data, error } = await supabase
     .from('todos')
@@ -633,58 +384,22 @@ export async function getTodos(): Promise<Todo[]> {
   return data as Todo[]
 }
 
-/**
- * 新建一条待办。
- * times = 打算重复几次（默认 1）。它只是个计数器、**不参与押注** ——
- * 每完成一次由它立项的目标，就扣掉一格（见 consumeTodoSlot）。
- */
-export async function createTodo(content: string, times = 1): Promise<Todo> {
+export async function createTodo(content: string, note = '', times = 1): Promise<Todo> {
   const user = await requireUser()
   const n = Math.max(1, Math.min(99, Math.round(times) || 1))
   const { data, error } = await supabase
     .from('todos')
-    .insert({ user_id: user.id, content: content.trim(), times_total: n, times_left: n })
+    .insert({
+      user_id: user.id, content: content.trim(), note: note.trim(),
+      times_total: n, times_left: n,
+    })
     .select()
     .single()
   if (error) throw error
   return data as Todo
 }
 
-/**
- * 来源目标完成了 → 消耗掉待办的一格。
- *
- * **只在「最终完成了」时才扣** —— 判负、放弃都不扣，这正是需求的原话。
- * 扣完变成 done（用完了）；还有剩就回到 open，清单里又能看见、可以再立项。
- *
- * 附加效果，失败不往上抛：调用方那边分已经加过、目标也已经完成，
- * 不该让"扣格失败"表现成"整个操作出错"。用户还能在清单里手动勾。
- */
-export async function consumeTodoSlot(todoId: string | null) {
-  if (!todoId) return
-  const { data: t } = await supabase
-    .from('todos')
-    .select('times_left')
-    .eq('id', todoId)
-    .maybeSingle()
-  if (!t) return
-  const left = Math.max(0, ((t as { times_left: number }).times_left ?? 1) - 1)
-  const { error } = await supabase
-    .from('todos')
-    .update({
-      times_left: left,
-      // 扣完 = 这条待办用完了；还有剩就放回清单，好再立项
-      status: left === 0 ? 'done' : 'open',
-      done_at: left === 0 ? new Date().toISOString() : null,
-      taken_at: null,
-    })
-    .eq('id', todoId)
-  if (error) throw error
-}
-
-/**
- * 改待办的文案和备注。
- * 两个都传：备注允许清空（传空串就是删掉备注），所以不能"只有非空才写"。
- */
+/** 改标题与内容（备注允许清空，所以不能"只有非空才写"） */
 export async function updateTodo(id: string, content: string, note = '') {
   await requireUser()
   const { error } = await supabase

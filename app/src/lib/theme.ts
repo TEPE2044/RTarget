@@ -26,7 +26,8 @@ const theme = ref<ThemeMode>((localStorage.getItem(THEME_KEY) as ThemeMode) || '
 watchEffect(() => {
   localStorage.setItem(THEME_KEY, theme.value)
   document.documentElement.setAttribute('data-theme', theme.value)
-  // antd v4 亮暗算法切换：dark 用 darkAlgorithm，light 用 defaultAlgorithm
+  // Vant 的深色模式开关：根节点带 van-theme-dark 时整套组件走深色令牌
+  document.documentElement.classList.toggle('van-theme-dark', theme.value === 'dark')
 })
 
 function toggleTheme() {

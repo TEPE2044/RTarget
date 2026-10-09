@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { message } from 'ant-design-vue'
+import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { friendlyError, useAuth } from '../lib/auth'
 
 /**
@@ -13,10 +13,6 @@ import { friendlyError, useAuth } from '../lib/auth'
  *
  * 没有魔法链接 —— 验证码不需要点链接，任何端、任何邮件 App 都能用。
  */
-const props = defineProps<{
-  /** 仅 dev 预览页用：直接跳到某一步，方便无头截图看排版（不调接口） */
-  devPreview?: 'login' | 'code-email' | 'code-verify' | 'code-password' | null
-}>()
 
 const {
   sendCode, verifyCode, setPassword, signInWithPassword,
@@ -26,11 +22,8 @@ const {
 type Mode = 'login' | 'code'
 type Step = 'email' | 'verify' | 'password'
 
-const devIsCode = props.devPreview?.startsWith('code') ?? false
-const devStep = props.devPreview?.split('-')[1] as Step | undefined
-
-const mode = ref<Mode>(devIsCode ? 'code' : 'login')
-const step = ref<Step>(devIsCode ? (devStep ?? 'email') : 'email')
+const mode = ref<Mode>('login')
+const step = ref<Step>('email')
 
 const email = ref('')
 const password = ref('')
@@ -39,14 +32,6 @@ const pwd1 = ref('')
 const pwd2 = ref('')
 const error = ref('')
 const busy = ref(false)
-
-// dev 预览页填上假数据，截图才看得出真实状态（按钮该亮的时候是亮的）
-if (props.devPreview) {
-  email.value = 'jackie@rtarget.app'
-  if (props.devPreview === 'login') password.value = 'rt-2026'
-  if (props.devPreview === 'code-verify') token.value = '482913'
-  if (props.devPreview === 'code-password') { pwd1.value = 'rt-2026'; pwd2.value = 'rt-2026' }
-}
 
 /** 重发冷却：Supabase 本身也是每个邮箱 60 秒一次，前端先挡住，省得白撞报错 */
 const cooldown = ref(0)
@@ -58,6 +43,7 @@ const pwdLeft = ref(PWD_WINDOW)
 let pwdTimer: ReturnType<typeof setInterval> | null = null
 
 const shownError = computed(() => error.value || authError.value)
+
 /**
  * 验证码位数**不能写死**。
  *
@@ -110,7 +96,7 @@ function startPwdWindow() {
     pwdLeft.value -= 1
     if (pwdLeft.value <= 0) {
       clearInterval(pwdTimer!); pwdTimer = null
-      giveUp('设置密码超时了，请重新验证一次')
+      void giveUp('设置密码超时了，请重新验证一次')
     }
   }, 1000)
 }
@@ -148,11 +134,11 @@ function backToEmail() {
 async function giveUp(tip = '已退出，随时可以再来') {
   clearTimers()
   await forceSignOut()
-  mode.value = devIsCode ? 'code' : 'login'
+  mode.value = 'login'
   step.value = 'email'
   pwd1.value = ''
   pwd2.value = ''
-  message.info(tip)
+  showToast(tip)
 }
 
 // ---------- 动作 ----------
@@ -161,14 +147,13 @@ async function doSendCode() {
   error.value = ''
   if (!email.value.trim()) return (error.value = '先填邮箱')
   if (cooldown.value > 0) return
-  if (props.devPreview) { step.value = 'verify'; return }
 
   busy.value = true
   try {
     await sendCode(email.value)
     step.value = 'verify'
     startCooldown()
-    message.success('验证码已发出')
+    showSuccessToast('验证码已发出')
   } catch (e) {
     error.value = friendlyError(e)
   } finally {
@@ -179,7 +164,6 @@ async function doSendCode() {
 async function doVerify() {
   error.value = ''
   if (!codeOk.value) return (error.value = '把邮件里那串数字填进来')
-  if (props.devPreview) { step.value = 'password'; startPwdWindow(); return }
 
   busy.value = true
   try {
@@ -190,7 +174,7 @@ async function doVerify() {
       step.value = 'password'
       startPwdWindow()
     } else {
-      message.success('验证成功，欢迎回来')
+      showSuccessToast('验证成功，欢迎回来')
       // passwordPending 已是 false，App.vue 会自动切到主界面
     }
   } catch (e) {
@@ -209,17 +193,16 @@ async function doSetPassword() {
   if (pwd1.value.length < 6) return (error.value = '密码至少 6 位')
   if (pwd1.value !== pwd2.value) return (error.value = '两次输的不一样')
   // 不靠界面状态保证安全：没有"验证过"的会话就不允许设密码
-  if (!passwordPending.value && !props.devPreview) {
+  if (!passwordPending.value) {
     step.value = 'verify'
     return (error.value = '还没验证邮箱，先输一次验证码')
   }
 
   busy.value = true
   try {
-    if (props.devPreview) return
     await setPassword(pwd1.value)
     clearTimers()
-    message.success('密码已设置，之后手机和网页都用它登录')
+    showSuccessToast('密码已设置，之后手机和网页都用它登录')
     // 成功后 passwordPending 变 false，App.vue 自动切到主界面
   } catch (e) {
     error.value = friendlyError(e)
@@ -234,10 +217,10 @@ async function doLogin() {
 
   busy.value = true
   try {
-    if (props.devPreview) return
     await signInWithPassword(email.value, password.value)
   } catch (e) {
     error.value = friendlyError(e)
+    showFailToast(friendlyError(e))
   } finally {
     busy.value = false
   }
@@ -245,142 +228,131 @@ async function doLogin() {
 </script>
 
 <template>
-  <div class="app-bg rt-login">
-    <div class="rt-login-box">
-      <div class="rt-login-brand">
-        <div class="rt-login-logo">RTarget</div>
-        <div class="rt-meta mt-2">懒人自驱动 · 奖罚迭代</div>
+  <div class="login">
+    <div class="login-box">
+      <div class="login-brand">
+        <div class="login-logo">RTarget</div>
+        <p class="login-sub">懒人自驱动 · 奖罚迭代</p>
       </div>
 
-      <div class="rt-card" style="padding: 16px">
-        <!-- 模式切换 -->
-        <div class="rt-seg" style="margin-bottom: 16px">
-          <button type="button" class="rt-segbtn" :class="{ active: mode === 'login' }"
-            @click="switchMode('login')">
-            <span class="rt-meta">账号密码登录</span>
-          </button>
-          <button type="button" class="rt-segbtn" :class="{ active: mode === 'code' }"
-            @click="switchMode('code')">
-            <span class="rt-meta">邮箱验证码登录</span>
-          </button>
+      <div class="login-card">
+        <div class="seg">
+          <button type="button" class="segbtn" :class="{ on: mode === 'login' }"
+            @click="switchMode('login')">账号密码</button>
+          <button type="button" class="segbtn" :class="{ on: mode === 'code' }"
+            @click="switchMode('code')">邮箱验证码</button>
         </div>
+
         <!-- ============ 登录：邮箱 + 密码 ============ -->
-        <a-form v-if="mode === 'login'" layout="vertical" @submit.prevent="doLogin">
-          <a-form-item label="邮箱">
-            <a-input v-model:value="email" size="large" placeholder="you@example.com"
-              @pressEnter="doLogin" />
-          </a-form-item>
-          <a-form-item label="密码">
-            <a-input-password v-model:value="password" size="large" placeholder="至少 6 位"
-              @pressEnter="doLogin" />
-          </a-form-item>
-          <button type="button" class="rbtn-primary rbtn-lg" style="width: 100%"
-            :disabled="busy || !email || !password" @click="doLogin()">
+        <template v-if="mode === 'login'">
+          <van-field v-model="email" type="email" label="邮箱" placeholder="you@example.com"
+            :border="false" @keyup.enter="doLogin" />
+          <van-field v-model="password" type="password" label="密码" placeholder="至少 6 位"
+            :border="false" @keyup.enter="doLogin" />
+          <van-button type="primary" block round class="login-btn"
+            :disabled="busy || !email || !password" @click="doLogin">
             {{ busy ? '登录中…' : '登录' }}
-          </button>
-          <p class="rt-meta" style="margin: 12px 0 0">
-            忘了密码？切换至「邮箱验证码」即可解决！
-          </p>
-        </a-form>
+          </van-button>
+          <p class="login-hint">忘了密码？切到「邮箱验证码」走一遍就能重设。</p>
+        </template>
 
         <!-- ============ 验证码 第 1 步：填邮箱 ============ -->
-        <a-form v-else-if="step === 'email'" layout="vertical" @submit.prevent="doSendCode">
-          <a-form-item label="邮箱">
-            <a-input v-model:value="email" size="large" placeholder="you@example.com"
-              @pressEnter="doSendCode" />
-          </a-form-item>
-          <button type="button" class="rbtn-primary rbtn-lg" style="width: 100%"
-            :disabled="busy || !email" @click="doSendCode()">
+        <template v-else-if="step === 'email'">
+          <van-field v-model="email" type="email" label="邮箱" placeholder="you@example.com"
+            :border="false" @keyup.enter="doSendCode" />
+          <van-button type="primary" block round class="login-btn"
+            :disabled="busy || !email" @click="doSendCode">
             {{ busy ? '发送中…' : '发送验证码' }}
-          </button>
-          <!-- <p class="rt-meta" style="margin: 12px 0 0">
-            第一次填就是注册。验证码通过后会让你设密码，设完手机和网页都能用密码登录。
-          </p> -->
-        </a-form>
+          </van-button>
+        </template>
 
         <!-- ============ 验证码 第 2 步：输邮件里那串数字 ============ -->
-        <a-form v-else-if="step === 'verify'" layout="vertical" @submit.prevent="doVerify">
-          <p class="rt-meta" style="margin: 0 0 12px">
-            验证码已发到 <span style="color: var(--rt-tx)">{{ email }}</span>
+        <template v-else-if="step === 'verify'">
+          <p class="login-hint login-hint-top">
+            验证码已发到 <b>{{ email }}</b>
           </p>
-          <a-form-item label="验证码">
-            <a-input v-model:value="token" class="rt-code" size="large" :maxlength="CODE_MAX"
-              inputmode="numeric" @pressEnter="doVerify" />
-          </a-form-item>
-          <button type="button" class="rbtn-primary rbtn-lg" style="width: 100%"
-            :disabled="busy || !codeOk" @click="doVerify()">
+          <van-field v-model="token" label="验证码" inputmode="numeric" class="code-field"
+            :border="false" placeholder="邮件里的数字" @keyup.enter="doVerify" />
+          <van-button type="primary" block round class="login-btn"
+            :disabled="busy || !codeOk" @click="doVerify">
             {{ busy ? '验证中…' : '验证' }}
-          </button>
-          <div style="display: flex; gap: 8px; margin-top: 10px">
-            <button type="button" class="rbtn rt-flex1" :disabled="cooldown > 0 || busy"
-              @click="doSendCode()">
-              {{ cooldown > 0 ? `重新发送（${cooldown}s）` : '重新发送' }}
-            </button>
-            <button type="button" class="rbtn rt-flex1" @click="backToEmail">换个邮箱</button>
+          </van-button>
+          <div class="login-row">
+            <van-button plain round size="small" :disabled="cooldown > 0 || busy" @click="doSendCode">
+              {{ cooldown > 0 ? `重发（${cooldown}s）` : '重新发送' }}
+            </van-button>
+            <van-button plain round size="small" @click="backToEmail">换个邮箱</van-button>
           </div>
-          <p class="rt-meta" style="margin: 12px 0 0">
-            没收到？翻一下垃圾邮件。验证码 1 小时内有效，且只能用一次。
-          </p>
-        </a-form>
+          <p class="login-hint">没收到？翻一下垃圾邮件。验证码 1 小时内有效，且只能用一次。</p>
+        </template>
 
-        <!-- ============ 验证码 第 3 步：设密码 ============
-             只有"这个账号还没设过密码"才会走到这里。
-             已经设过密码的账号，验证码一过就直接放行了（见 doVerify）。 -->
-        <a-form v-else layout="vertical" @submit.prevent="doSetPassword">
-          <p class="rt-meta" style="margin: 0 0 12px">
-            这个账号还没设过密码。设一个 —— 之后手机和网页都能直接用密码登录，不用再收验证码。
+        <!-- ============ 验证码 第 3 步：设密码 ============ -->
+        <template v-else>
+          <p class="login-hint login-hint-top">
+            这个账号还没设过密码。设一个 —— 之后手机和网页都能直接用密码登录。
           </p>
-          <a-form-item label="设置密码（至少 6 位）">
-            <a-input-password v-model:value="pwd1" size="large" placeholder="想一个记得住的" />
-          </a-form-item>
-          <a-form-item label="再输一遍">
-            <a-input-password v-model:value="pwd2" size="large" @pressEnter="doSetPassword" />
-          </a-form-item>
-          <button type="button" class="rbtn-primary rbtn-lg" style="width: 100%"
-            :disabled="busy || !canSubmitPwd" @click="doSetPassword()">
+          <van-field v-model="pwd1" type="password" label="设置密码" placeholder="至少 6 位" :border="false" />
+          <van-field v-model="pwd2" type="password" label="再输一遍" placeholder="两次要一样"
+            :border="false" @keyup.enter="doSetPassword" />
+          <van-button type="primary" block round class="login-btn"
+            :disabled="busy || !canSubmitPwd" @click="doSetPassword">
             {{ busy ? '保存中…' : '设好了，进入应用' }}
-          </button>
-          <div style="display: flex; align-items: center; margin-top: 10px">
-            <button type="button" class="rbtn" @click="giveUp()">放弃</button>
-            <span class="rt-meta rt-push">{{ pwdLeftText }}</span>
+          </van-button>
+          <div class="login-row">
+            <van-button plain round size="small" @click="giveUp()">放弃</van-button>
+            <span class="login-hint">{{ pwdLeftText }}</span>
           </div>
-        </a-form>
+        </template>
 
-        <p v-if="shownError" class="rt-login-err">{{ shownError }}</p>
+        <p v-if="shownError" class="login-err">{{ shownError }}</p>
       </div>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-.rt-login {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.login {
+  min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(24px + var(--rt-safe-top)) 20px calc(24px + var(--rt-safe-bottom));
+  background: var(--bg);
 }
+.login-box { width: 100%; max-width: 380px; }
 
-.rt-login-box { width: 100%; max-width: 380px; }
+.login-brand { text-align: center; margin-bottom: 20px; }
+.login-logo { font-size: 24px; font-weight: 600; letter-spacing: .02em; color: var(--ink); }
+.login-sub { margin: 6px 0 0; font-size: 13px; color: var(--ink-3); }
 
-.rt-login-brand { text-align: center; margin-bottom: 20px; }
-.rt-login-logo { font-size: 24px; font-weight: 500; letter-spacing: 0.02em; }
+.login-card {
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card);
+  padding: 16px;
+}
+.login-card :deep(.van-field) { padding-left: 0; padding-right: 0; }
+.login-card :deep(.van-field__label) { width: 68px; color: var(--ink-2); }
 
-/* 验证码：居中、拉开字距，一眼能数清几位。
-   字距留得克制一点 —— 位数是可配的（最多 10 位），别撑出输入框 */
-.rt-code :deep(input) {
-  text-align: center;
-  letter-spacing: 4px;
-  font-size: 18px;
+.seg { display: flex; gap: 8px; margin-bottom: 16px; }
+.segbtn {
+  flex: 1; height: 34px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink-2); font-size: 13px; cursor: pointer;
+}
+.segbtn.on { background: var(--ink-soft); border-color: var(--ink-soft); color: var(--ink); font-weight: 600; }
+
+.login-btn { margin-top: 16px; }
+
+.login-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
+.login-hint { margin: 12px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink-3); }
+.login-hint-top { margin: 0 0 12px; }
+.login-hint b { color: var(--ink); font-weight: 600; }
+
+/* 验证码：居中、拉开字距，一眼能数清几位（位数可配，最多 10 位，别撑出输入框） */
+.code-field :deep(input) {
+  text-align: center; letter-spacing: 4px; font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
 
-.rt-login-err {
-  margin: 14px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--rt-red-bg);
-  color: var(--rt-red);
-  font-size: 12px;
-  line-height: 1.5;
+.login-err {
+  margin: 14px 0 0; padding: 8px 10px; border-radius: 8px;
+  background: var(--cold-bg); color: var(--cold-deep); font-size: 12px; line-height: 1.5;
 }
 </style>

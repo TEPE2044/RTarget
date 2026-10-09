@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
-import Antd from 'ant-design-vue'
-import 'ant-design-vue/dist/reset.css'
+import Vant from 'vant'
+import 'vant/lib/index.css'
 import './style.css'
 import App from './App.vue'
 import { markAppReady } from './lib/updater'
@@ -9,4 +9,4 @@ import { markAppReady } from './lib/updater'
 // 晚于挂载、或者漏调，插件都会把新版本判成坏包并在下次启动时回滚。
 markAppReady()
 
-createApp(App).use(Antd).mount('#app')
+createApp(App).use(Vant).mount('#app')

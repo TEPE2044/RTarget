@@ -15,6 +15,21 @@ import { CapacitorUpdater } from '@capgo/capacitor-updater'
 export const isNative = Capacitor.isNativePlatform()
 
 /**
+ * 桌面壳（Tauri）检测。
+ *
+ * 桌面壳在 tauri.conf.json 里开了 withGlobalTauri，页面能看见 `window.__TAURI__`。
+ * 它既不是 Capacitor 原生、也不是普通浏览器：版本号改从 Tauri 读（安装包版本），
+ * OTA（capgo）在它身上不存在 —— 所以单独一个判断分支。
+ */
+declare global {
+  interface Window {
+    __TAURI__?: { app?: { getVersion?: () => Promise<string> } }
+  }
+}
+
+export const isDesktopShell = typeof window !== 'undefined' && !!window.__TAURI__?.app?.getVersion
+
+/**
  * 更新源地址（Supabase Storage 的公开桶基地址）。
  * 配在 `app/.env.local` 的 `VITE_UPDATE_BASE`，那个文件不进 git。
  * 例：https://xxxx.supabase.co/storage/v1/object/public/rtarget-releases
@@ -44,15 +59,30 @@ export async function markAppReady() {
   }
 }
 
-/** 当前正在跑的版本号（首次安装是 APK 里那个内置版本） */
+/**
+ * 当前正在跑的版本号。
+ * - Capacitor（手机）：OTA 切过去的版本；首次安装是 APK 里那个内置版本
+ * - Tauri（桌面）：安装包的版本号，带"桌面版"前缀（桌面更新 = 重装安装包）
+ * - 浏览器：固定返回"浏览器"
+ */
 export async function currentVersion(): Promise<string> {
-  if (!isNative) return '浏览器'
-  try {
-    const cur = await CapacitorUpdater.current()
-    return cur.bundle.version
-  } catch {
-    return '未知'
+  if (isNative) {
+    try {
+      const cur = await CapacitorUpdater.current()
+      return cur.bundle.version
+    } catch {
+      return '未知'
+    }
   }
+  if (isDesktopShell) {
+    try {
+      const v = await window.__TAURI__!.app!.getVersion!()
+      return `桌面版 ${v}`
+    } catch {
+      return '桌面版'
+    }
+  }
+  return '浏览器'
 }
 
 /** 拉远端 latest.json（带时间戳，绕开 WebView 缓存） */
