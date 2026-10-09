@@ -228,131 +228,132 @@ async function doLogin() {
 </script>
 
 <template>
-  <div class="login">
-    <div class="login-box">
-      <div class="login-brand">
-        <div class="login-logo">RTarget</div>
-        <p class="login-sub">懒人自驱动 · 奖罚迭代</p>
+  <div class="app-bg rt-login">
+    <div class="rt-login-box">
+      <div class="rt-login-brand">
+        <div class="rt-login-logo">RTarget</div>
+        <div class="rt-meta rt-gap8">懒人自驱动 · 奖罚迭代</div>
       </div>
 
-      <div class="login-card">
-        <div class="seg">
-          <button type="button" class="segbtn" :class="{ on: mode === 'login' }"
-            @click="switchMode('login')">账号密码</button>
-          <button type="button" class="segbtn" :class="{ on: mode === 'code' }"
-            @click="switchMode('code')">邮箱验证码</button>
+      <div class="rt-card rt-pad-lg">
+        <!-- 模式切换 -->
+        <div class="rt-seg" style="margin-bottom:16px">
+          <button type="button" class="rt-segbtn" :class="{ active: mode === 'login' }"
+            @click="switchMode('login')">
+            <span class="rt-meta">账号密码登录</span>
+          </button>
+          <button type="button" class="rt-segbtn" :class="{ active: mode === 'code' }"
+            @click="switchMode('code')">
+            <span class="rt-meta">邮箱验证码登录</span>
+          </button>
         </div>
 
         <!-- ============ 登录：邮箱 + 密码 ============ -->
         <template v-if="mode === 'login'">
           <van-field v-model="email" type="email" label="邮箱" placeholder="you@example.com"
-            :border="false" @keyup.enter="doLogin" />
+            @keyup.enter="doLogin" />
           <van-field v-model="password" type="password" label="密码" placeholder="至少 6 位"
-            :border="false" @keyup.enter="doLogin" />
-          <van-button type="primary" block round class="login-btn"
-            :disabled="busy || !email || !password" @click="doLogin">
+            @keyup.enter="doLogin" />
+          <button type="button" class="rbtn-primary rbtn-lg rt-gap20" style="width:100%"
+            :disabled="busy || !email || !password" @click="doLogin()">
             {{ busy ? '登录中…' : '登录' }}
-          </van-button>
-          <p class="login-hint">忘了密码？切到「邮箱验证码」走一遍就能重设。</p>
+          </button>
+          <p class="rt-meta" style="margin:12px 0 0">忘了密码？走一遍邮箱验证码就能重设</p>
         </template>
 
         <!-- ============ 验证码 第 1 步：填邮箱 ============ -->
         <template v-else-if="step === 'email'">
           <van-field v-model="email" type="email" label="邮箱" placeholder="you@example.com"
-            :border="false" @keyup.enter="doSendCode" />
-          <van-button type="primary" block round class="login-btn"
-            :disabled="busy || !email" @click="doSendCode">
+            @keyup.enter="doSendCode" />
+          <button type="button" class="rbtn-primary rbtn-lg rt-gap20" style="width:100%"
+            :disabled="busy || !email" @click="doSendCode()">
             {{ busy ? '发送中…' : '发送验证码' }}
-          </van-button>
+          </button>
         </template>
 
         <!-- ============ 验证码 第 2 步：输邮件里那串数字 ============ -->
         <template v-else-if="step === 'verify'">
-          <p class="login-hint login-hint-top">
-            验证码已发到 <b>{{ email }}</b>
+          <p class="rt-meta" style="margin:0 0 12px">
+            验证码已发到 <b class="rt-em">{{ email }}</b>
           </p>
-          <van-field v-model="token" label="验证码" inputmode="numeric" class="code-field"
-            :border="false" placeholder="邮件里的数字" @keyup.enter="doVerify" />
-          <van-button type="primary" block round class="login-btn"
-            :disabled="busy || !codeOk" @click="doVerify">
+          <van-field v-model="token" label="验证码" inputmode="numeric" class="rt-code"
+            placeholder="邮件里的数字" @keyup.enter="doVerify" />
+          <button type="button" class="rbtn-primary rbtn-lg rt-gap20" style="width:100%"
+            :disabled="busy || !codeOk" @click="doVerify()">
             {{ busy ? '验证中…' : '验证' }}
-          </van-button>
-          <div class="login-row">
-            <van-button plain round size="small" :disabled="cooldown > 0 || busy" @click="doSendCode">
+          </button>
+          <div class="rt-bar rt-gap12">
+            <button type="button" class="rbtn rt-flex1" :disabled="cooldown > 0 || busy"
+              @click="doSendCode()">
               {{ cooldown > 0 ? `重发（${cooldown}s）` : '重新发送' }}
-            </van-button>
-            <van-button plain round size="small" @click="backToEmail">换个邮箱</van-button>
+            </button>
+            <button type="button" class="rbtn rt-flex1" @click="backToEmail()">换个邮箱</button>
           </div>
-          <p class="login-hint">没收到？翻一下垃圾邮件。验证码 1 小时内有效，且只能用一次。</p>
+          <p class="rt-meta" style="margin:12px 0 0">
+            没收到？看看垃圾邮件。1 小时内有效。
+          </p>
         </template>
 
         <!-- ============ 验证码 第 3 步：设密码 ============ -->
         <template v-else>
-          <p class="login-hint login-hint-top">
-            这个账号还没设过密码。设一个 —— 之后手机和网页都能直接用密码登录。
+          <p class="rt-meta" style="margin:0 0 12px">
+            这个账号还没设过密码，设一个。
           </p>
-          <van-field v-model="pwd1" type="password" label="设置密码" placeholder="至少 6 位" :border="false" />
+          <van-field v-model="pwd1" type="password" label="设置密码" placeholder="至少 6 位" />
           <van-field v-model="pwd2" type="password" label="再输一遍" placeholder="两次要一样"
-            :border="false" @keyup.enter="doSetPassword" />
-          <van-button type="primary" block round class="login-btn"
-            :disabled="busy || !canSubmitPwd" @click="doSetPassword">
+            @keyup.enter="doSetPassword" />
+          <button type="button" class="rbtn-primary rbtn-lg rt-gap20" style="width:100%"
+            :disabled="busy || !canSubmitPwd" @click="doSetPassword()">
             {{ busy ? '保存中…' : '设好了，进入应用' }}
-          </van-button>
-          <div class="login-row">
-            <van-button plain round size="small" @click="giveUp()">放弃</van-button>
-            <span class="login-hint">{{ pwdLeftText }}</span>
+          </button>
+          <div class="rt-bar rt-gap12">
+            <button type="button" class="rbtn" @click="giveUp()">放弃</button>
+            <span class="rt-meta rt-push">{{ pwdLeftText }}</span>
           </div>
         </template>
 
-        <p v-if="shownError" class="login-err">{{ shownError }}</p>
+        <p v-if="shownError" class="rt-login-err">{{ shownError }}</p>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.login {
-  min-height: 100dvh;
-  display: flex; align-items: center; justify-content: center;
-  padding: calc(24px + var(--rt-safe-top)) 20px calc(24px + var(--rt-safe-bottom));
-  background: var(--bg);
+/* 只留「登录页特有」的东西；卡片 / 分段按钮 / 输入 / 按钮全用 style.css 里的
+   .rt-card / .rt-seg / .rt-segbtn / .rbtn —— 0.0.1 就是这么搭的，
+   自己另造一套 --bg/--card/--ink 之类的变量名只会变成"什么都查不到"。 */
+.rt-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.login-box { width: 100%; max-width: 380px; }
 
-.login-brand { text-align: center; margin-bottom: 20px; }
-.login-logo { font-size: 24px; font-weight: 600; letter-spacing: .02em; color: var(--ink); }
-.login-sub { margin: 6px 0 0; font-size: 13px; color: var(--ink-3); }
+.rt-login-box { width: 100%; max-width: 380px; }
 
-.login-card {
-  background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card);
-  padding: 16px;
-}
-.login-card :deep(.van-field) { padding-left: 0; padding-right: 0; }
-.login-card :deep(.van-field__label) { width: 68px; color: var(--ink-2); }
+.rt-login-brand { text-align: center; margin-bottom: 20px; }
+.rt-login-logo { font-size: 24px; font-weight: 500; letter-spacing: 0.02em; }
 
-.seg { display: flex; gap: 8px; margin-bottom: 16px; }
-.segbtn {
-  flex: 1; height: 34px; border-radius: 10px; border: 1px solid var(--line);
-  background: var(--card); color: var(--ink-2); font-size: 13px; cursor: pointer;
-}
-.segbtn.on { background: var(--ink-soft); border-color: var(--ink-soft); color: var(--ink); font-weight: 600; }
+.rt-login-box :deep(.van-field) { padding-left: 0; padding-right: 0; }
+.rt-login-box :deep(.van-field__label) { width: 68px; color: var(--rt-tx2); }
 
-.login-btn { margin-top: 16px; }
+.rt-em { color: var(--rt-tx); font-weight: 500; }
 
-.login-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-
-.login-hint { margin: 12px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink-3); }
-.login-hint-top { margin: 0 0 12px; }
-.login-hint b { color: var(--ink); font-weight: 600; }
-
-/* 验证码：居中、拉开字距，一眼能数清几位（位数可配，最多 10 位，别撑出输入框） */
-.code-field :deep(input) {
-  text-align: center; letter-spacing: 4px; font-size: 18px;
+/* 验证码：居中、拉开字距，一眼能数清几位。
+   字距留得克制一点 —— 位数是可配的（最多 10 位），别撑出输入框 */
+.rt-code :deep(input) {
+  text-align: center;
+  letter-spacing: 4px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
 
-.login-err {
-  margin: 14px 0 0; padding: 8px 10px; border-radius: 8px;
-  background: var(--cold-bg); color: var(--cold-deep); font-size: 12px; line-height: 1.5;
+.rt-login-err {
+  margin: 14px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--rt-red-bg);
+  color: var(--rt-red);
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

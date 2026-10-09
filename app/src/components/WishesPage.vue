@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
-import { addWish, booted, doneWishes, goals, openWishes, reportError, toggleWish } from '../lib/store'
+import {
+  addWish, booted, busy, doneWishes, goals, openWishes, reportError, toggleWish,
+} from '../lib/store'
 import { fmtDay } from '../lib/format'
 
-/**
- * 愿望单
- *
- * 原型这一页没有"加一个"的入口（原型数据是预置的），但真实现必须能加 ——
- * 否则愿望单一辈子空着，立项向导第 3 步的"从愿望挑"就成了摆设。
- * 所以照着待办页的做法补了个右上角 ＋ 与一个单字段抽屉。
- */
 const sheet = reactive({ show: false, text: '' })
+
+/** 右下悬浮球借这个入口 */
+function openNew() { sheet.text = ''; sheet.show = true }
+defineExpose({ openNew })
 
 /** 这个愿望被哪条进行中的目标挂成了奖励（挂了就别乱动，等它兑现或判负） */
 function attachedTo(id: string): string {
@@ -30,40 +29,49 @@ async function save() {
 </script>
 
 <template>
-  <van-nav-bar title="愿望">
-    <template #right>
-      <van-icon name="plus" size="20" @click="sheet.show = true" />
-    </template>
-  </van-nav-bar>
+  <van-skeleton v-if="!booted" title :row="6" style="padding:16px 0" />
+  <template v-else>
+    <div class="rt-card rt-listpad">
+      <div v-for="w in openWishes" :key="w.id" class="rt-li">
+        <span class="rt-li-ic"><van-icon name="star-o" /></span>
+        <div class="rt-li-2">
+          <div class="rt-li-2-t">{{ w.content }}</div>
+          <!-- 别顺手写"删除、重新挑"—— 现在没有这两个入口，文案不能提前许诺 -->
+          <div v-if="attachedTo(w.id)" class="rt-meta">
+            已挂给「{{ attachedTo(w.id) }}」
+          </div>
+        </div>
+        <button class="rbtn" :disabled="busy || !!attachedTo(w.id)"
+          @click.stop="toggleWish(w)">兑现</button>
+      </div>
+      <div v-if="!openWishes.length" class="rt-li">
+        <span class="rt-meta">还没有愿望</span>
+      </div>
+    </div>
 
-  <div class="pad">
-    <van-skeleton v-if="!booted" title :row="6" />
-    <template v-else>
-      <van-cell-group v-if="openWishes.length" inset>
-        <van-cell v-for="w in openWishes" :key="w.id" :title="w.content"
-          :label="attachedTo(w.id) ? '已挂给「' + attachedTo(w.id) + '」· 兑现或判负前先别动它' : ''">
-          <template #right-icon>
-            <van-button size="small" plain round icon="success" @click.stop="toggleWish(w)" />
-          </template>
-        </van-cell>
-      </van-cell-group>
-      <van-empty v-else description="还没想做的事 —— 加一个" />
-
-      <van-cell-group v-if="doneWishes.length" inset title="已实现">
-        <van-cell v-for="w in doneWishes" :key="w.id" :title="w.content"
-          :label="w.done_at ? fmtDay(w.done_at) + ' 兑现' : ''" class="muted" />
-      </van-cell-group>
+    <template v-if="doneWishes.length">
+      <p class="rt-cap rt-gap26">已实现</p>
+      <div class="rt-card rt-listpad">
+        <div v-for="w in doneWishes" :key="w.id" class="rt-li rt-done">
+          <span class="rt-li-ic"><van-icon name="passed" /></span>
+          <div class="rt-li-2">
+            <div class="rt-li-2-t">{{ w.content }}</div>
+            <div v-if="w.done_at" class="rt-meta">{{ fmtDay(w.done_at) }} 兑现</div>
+          </div>
+        </div>
+      </div>
     </template>
-  </div>
+  </template>
 
   <van-popup v-model:show="sheet.show" position="bottom" round>
-    <div class="sheet">
-      <div class="sheet-head">加一个愿望</div>
-      <van-field v-model="sheet.text" label="愿望" placeholder="比如：看一场电影"
-        @keyup.enter="save" />
-      <div class="foot">
-        <van-button block plain @click="sheet.show = false">取消</van-button>
-        <van-button block type="primary" :disabled="!sheet.text.trim()" @click="save">确定</van-button>
+    <div class="rt-sheet-inner">
+      <div class="rt-sheet-head">加一个愿望</div>
+      <div class="rt-sheet-body">
+        <van-field v-model="sheet.text" placeholder="想要什么" @keyup.enter="save" />
+        <div class="rt-sheet-actions">
+          <button class="rbtn-primary" :disabled="busy || !sheet.text.trim()" @click="save()">确定</button>
+          <button class="rbtn" @click="sheet.show = false">取消</button>
+        </div>
       </div>
     </div>
   </van-popup>

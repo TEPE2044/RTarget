@@ -1,47 +1,65 @@
 @import "tailwindcss";
 
 /* ============================================================
-   RTarget · 皮肤层（Vant 4 令牌覆盖 + 自绘块）
-   主题：墨色主调 + 三身份
-     目标 = 墨（主角）· 奖励 = 暖橙 · 惩罚 = 冷蓝灰
-     交互色（按钮 / 选中 / 标签栏）统一收进 --accent，颜色只留给三种身份。
-   Vant 组件保持原味（结构 / 交互不动），这里只做令牌覆盖 + 自绘块。
+   RTarget 设计系统 —— 移动优先
+   布局：顶部窄栏（品牌 + 时钟 + 工具图标）+ 内容单列（max 640）
+        + 底部导航 + 右下主行动按钮（悬浮球）
+   硬规则：字重只有 400 / 500 两档，边框统一 0.5px，
+   圆角 8px（组件）/ 12px（卡片），正文 14px、次要信息 12px。
+   深浅色全部走 CSS 变量，切主题只换 [data-theme]。
+
+   组件库是 Vant 4，但颜色不交给 Vant 自己定 —— 文件下半部分的
+   「Vant 令牌桥」把 --van-* 全映射到这里的 --rt-*，
+   所以深浅色只维护一份，Vant 组件跟着一起换皮。
    ============================================================ */
 
 :root {
-  --ink: #1F2329;
-  --ink-2: #4E5969;
-  --ink-3: #86909C;
-  --line: #EBEDF0;
-  --bg: #F5F6F8;
-  --card: #FFFFFF;
-  --warm: #E8830C;
-  --warm-bg: #FFEFCB;
-  --warm-deep: #9A5B06;
-  --cold: #55657A;
-  --cold-bg: #E4EBF4;
-  --cold-deep: #3A4656;
-  --accent: #2563EB;          /* 选中色：只做交互选中，不进三身份 */
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 20px -8px rgba(16, 24, 40, .10);
+  --rt-bg: #f5f5f5;
+  --rt-card: #ffffff;
+  --rt-sub: #fafafa;
+  --rt-hover: rgba(0, 0, 0, 0.04);
+  --rt-blur: rgba(255, 255, 255, 0.86);
+  --rt-line: rgba(0, 0, 0, 0.10);
+  --rt-line-strong: rgba(0, 0, 0, 0.18);
+  --rt-tx: rgba(0, 0, 0, 0.88);
+  --rt-tx2: rgba(0, 0, 0, 0.55);
+  --rt-tx3: rgba(0, 0, 0, 0.38);
 
-  --batt-off: #DCDFE4;
-  --ink-soft: #F2F3F5;
-  --track: #EEF0F3;
+  --rt-blue: #185FA5;   --rt-blue-bg: #E6F1FB;
+  --rt-green: #3B6D11;  --rt-green-bg: #EAF3DE;
+  --rt-amber: #854F0B;  --rt-amber-bg: #FAEEDA;
+  --rt-red: #A32D2D;    --rt-red-bg: #FCEBEB;
+  --rt-gray: #5F5E5A;   --rt-gray-bg: #F1EFE8;
 
-  /* —— Vant 令牌覆盖（所有组件跟着走） —— */
-  --van-primary-color: var(--ink);
-  --van-tabbar-item-active-color: var(--accent);
-  --van-tabs-bottom-bar-color: var(--accent);
-  --van-tab-active-text-color: var(--accent);
-  --van-background: var(--bg);
-  --van-background-2: var(--card);
-  --van-text-color: var(--ink);
-  --van-text-color-2: var(--ink-3);
-  --van-border-color: var(--line);
-  --van-radius-md: 10px;
-  --van-radius-lg: 12px;
+  /* 三身份：目标 = 墨（主角）· 奖励 = 暖橙 · 惩罚 = 冷蓝灰 */
+  --rt-warm: #9A5B06;   --rt-warm-bg: #FFEFCB;   --rt-warm-line: #F3DCB0;
+  --rt-cold: #3A4656;   --rt-cold-bg: #E4EBF4;   --rt-cold-line: #D5DEE9;
 
-  /* 安全区（Android WebView 对 env() 支持不可靠，Capacitor 会注入 --safe-area-inset-*） */
+  --rt-accent: #185FA5;   --rt-accent-fg: #ffffff;
+  /* 卡片浮起感：光有发丝线的话，浅灰底上的白卡会"贴"在背景上，整页看着是扁的 */
+  --rt-shadow-card: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 20px -8px rgba(16, 24, 40, .10);
+  --rt-rail-blue: #378ADD;
+  --rt-rail-green: #639922;
+  --rt-rail-amber: #EF9F27;
+  --rt-rail-gray: #B4B2A9;
+  --rt-dot: #E24B4A;
+
+  --rt-batt-off: #DCDFE4;
+  --rt-soft: #F2F3F5;
+  --rt-track: #EEF0F3;
+
+  /* 壳内尺寸：底部栏参与内容的下边距计算 */
+  --rt-appbar: 48px;
+  --rt-tabbar: 56px;
+  --rt-maxw: 640px;
+
+  /* 安全区（状态栏 / 手势条 / 挖孔）。
+     坑：Android WebView 对 env(safe-area-inset-*) 支持很不可靠（返回空值），
+     而 targetSdk ≥ 35 时系统强制 edge-to-edge，页面必然铺到系统栏底下 ——
+     光靠 env() 上下都会被压住。
+     Capacitor 8.3.2+ 的内核（SystemBars，insetsHandling 默认 "css"）会把真实
+     像素值按 dp 注入成 --safe-area-inset-*，所以顺序是：
+     先读注入的变量 → 退回 env()（iOS / 新 WebView）→ 最后 0（桌面浏览器）。 */
   --rt-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   --rt-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
   --rt-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
@@ -49,249 +67,861 @@
 }
 
 [data-theme='dark'] {
-  --ink: #E8EAED;
-  --ink-2: #A9B0BB;
-  --ink-3: #767F8C;
-  --line: #2A2E35;
-  --bg: #16181C;
-  --card: #1E2126;
-  --warm-bg: #3A2B10;
-  --warm-deep: #F0B459;
-  --cold-bg: #23303F;
-  --cold-deep: #A8BDD6;
-  --accent: #4C8DF6;
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 20px -8px rgba(0, 0, 0, .5);
-  --batt-off: #343A43;
-  --ink-soft: #262A31;
-  --track: #2A2F37;
+  --rt-bg: #141414;
+  --rt-card: #1d1d1d;
+  --rt-sub: #262626;
+  --rt-hover: rgba(255, 255, 255, 0.06);
+  --rt-blur: rgba(29, 29, 29, 0.86);
+  --rt-line: rgba(255, 255, 255, 0.12);
+  --rt-line-strong: rgba(255, 255, 255, 0.24);
+  --rt-tx: rgba(255, 255, 255, 0.88);
+  --rt-tx2: rgba(255, 255, 255, 0.60);
+  --rt-tx3: rgba(255, 255, 255, 0.42);
 
-  --van-background: var(--bg);
-  --van-background-2: var(--card);
-  --van-text-color: var(--ink);
-  --van-text-color-2: var(--ink-3);
-  --van-border-color: var(--line);
+  --rt-blue: #85B7EB;   --rt-blue-bg: rgba(55, 138, 221, 0.20);
+  --rt-green: #97C459;  --rt-green-bg: rgba(99, 153, 34, 0.20);
+  --rt-amber: #FAC775;  --rt-amber-bg: rgba(239, 159, 39, 0.18);
+  --rt-red: #F09595;    --rt-red-bg: rgba(226, 75, 74, 0.20);
+  --rt-gray: #B4B2A9;   --rt-gray-bg: rgba(255, 255, 255, 0.08);
+
+  --rt-warm: #F0B459;   --rt-warm-bg: rgba(232, 131, 12, 0.16);   --rt-warm-line: rgba(232, 131, 12, 0.40);
+  --rt-cold: #A8BDD6;   --rt-cold-bg: rgba(85, 101, 122, 0.24);   --rt-cold-line: rgba(85, 101, 122, 0.46);
+
+  --rt-accent: #2F7FC7;   --rt-accent-fg: #ffffff;
+  /* 深色下阴影要更重，否则黑底上的黑卡完全看不出边界 */
+  --rt-shadow-card: 0 1px 2px rgba(0, 0, 0, .40), 0 8px 22px -8px rgba(0, 0, 0, .60);
+
+  --rt-batt-off: #343A43;
+  --rt-soft: #262A31;
+  --rt-track: #2A2F37;
 }
 
-html, body, #app { height: 100%; }
+/* Vant 的弹层 teleport 到 body，跑出了 .rt，所以字体/底色要在 body 上也写一份 */
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--rt-bg);
+  color: var(--rt-tx);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* ---------- 页面骨架 ---------- */
+
+.rt {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--rt-bg);
+  color: var(--rt-tx);
+  font-size: 14px;
+  line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  /* 手机上点按钮不要出现蓝色高亮块 */
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
 
-/* ---------- 骨架：内容滚动 + 底部标签栏 ---------- */
-.app {
-  height: 100dvh;
+.rt-center { display: flex; align-items: center; justify-content: center; }
+
+/* ---------- 顶部栏 ---------- */
+
+.rt-appbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--rt-blur);
+  -webkit-backdrop-filter: saturate(1.6) blur(12px);
+  backdrop-filter: saturate(1.6) blur(12px);
+  border-bottom: 0.5px solid var(--rt-line);
+  /* 顶部把状态栏高度让出来 */
+  padding-top: var(--rt-safe-top);
+}
+
+.rt-appbar-inner {
+  max-width: var(--rt-maxw);
+  margin: 0 auto;
+  height: var(--rt-appbar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 calc(12px + var(--rt-safe-right))
+    0 calc(12px + var(--rt-safe-left));
+}
+
+.rt-brand { font-size: 20px; font-weight: 500; letter-spacing: 0.02em; }
+
+.rt-iconbtn {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--rt-tx2);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.15s, color 0.15s;
+}
+.rt-iconbtn:hover { background: var(--rt-hover); color: var(--rt-tx); }
+.rt-iconbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.rt-iconbtn-danger:hover { background: var(--rt-red-bg); color: var(--rt-red); }
+.rt-ico { display: block; }
+
+/* ---------- 内容区 ---------- */
+
+.rt-main {
+  max-width: var(--rt-maxw);
+  margin: 0 auto;
+  /* 底部让出导航栏与手势条 */
+  padding: 14px calc(16px + var(--rt-safe-right))
+    calc(var(--rt-tabbar) + var(--rt-safe-bottom) + 32px)
+    calc(16px + var(--rt-safe-left));
+}
+
+/* ---------- 底部导航 ---------- */
+
+.rt-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  background: var(--rt-blur);
+  -webkit-backdrop-filter: saturate(1.6) blur(12px);
+  backdrop-filter: saturate(1.6) blur(12px);
+  border-top: 0.5px solid var(--rt-line);
+  padding-bottom: var(--rt-safe-bottom);
+}
+
+.rt-tabbar-inner {
+  max-width: var(--rt-maxw);
+  margin: 0 auto;
+  display: flex;
+}
+
+.rt-tab {
+  flex: 1;
+  height: var(--rt-tabbar);
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: var(--rt-tx3);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 0.15s;
 }
-.views { flex: 1; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
-.pad { padding: 4px 0 24px; }
+.rt-tab.active { color: var(--rt-blue); }
+.rt-tab:active { opacity: 0.7; }
 
-/* 顶部窄栏要顶开状态栏；底部标签栏要顶开手势条 */
-.van-nav-bar {
-  padding-top: var(--rt-safe-top);
-  height: calc(var(--van-nav-bar-height, 46px) + var(--rt-safe-top));
-}
-.van-safe-area-bottom { padding-bottom: var(--rt-safe-bottom) !important; }
-.van-safe-area-top { padding-top: var(--rt-safe-top) !important; }
-
-/* 全屏弹层（目标详情 / 向导）也要让开状态栏 */
-.d-page, .wz-page { padding-top: var(--rt-safe-top); padding-bottom: var(--rt-safe-bottom); }
-
-/* ---------- Vant 细部统一 ---------- */
-.van-cell-group--inset { border-radius: 14px; box-shadow: var(--shadow-card); }
-.van-cell-group__title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.van-nav-bar__title { font-weight: 600; }
-.van-tabbar-item--active { font-weight: 600; }
-.van-tabbar-item--active .van-tabbar-item__icon { font-weight: normal; }
-.van-button:not(.van-button--round) { border-radius: 10px; }
-.van-tag:not(.van-tag--round) { border-radius: 6px; }
-
-/* ---------- 首页 · 活力值（主角数据） ---------- */
-.hero-card {
-  margin: 12px 16px; padding: 18px 18px 16px;
-  background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card);
-}
-.hero-label { margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; color: var(--ink-3); }
-.hero-num {
-  margin: 0 0 14px; font-size: 34px; font-weight: 700; line-height: 1;
-  color: var(--ink); font-variant-numeric: tabular-nums;
-}
-.hero-bar { height: 8px; border-radius: 99px; background: var(--track); overflow: hidden; }
-.hero-bar i {
-  display: block; height: 100%; border-radius: 99px; background: var(--ink);
-  transition: width .8s cubic-bezier(.2, .8, .2, 1);
-}
-.hero-legend { margin: 12px 0 0; font-size: 12px; color: var(--ink-3); }
-.hero-legend b { color: var(--ink-2); font-weight: 600; }
-
-.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 16px; }
-
-/* ---------- Cell 的 #icon 插槽 ----------
- * Vant 只在用 `icon` prop 时才套一层 .van-cell__left-icon（24px 高 + 右边距），
- * 走 #icon 插槽的话节点是裸的、直接当 flex 子项被拉满整格高
- * → 图标顶到格子上沿、右边也没间距，看着就是"错位"。
- * 自己包一层 .cell-lead，把图标钉在标题那一行上。
- */
-.cell-lead {
-  flex: none; display: flex; align-items: center; justify-content: center;
-  height: var(--van-cell-line-height, 24px); margin-right: 8px;
+.rt-tab-ico { position: relative; display: block; }
+.rt-tab-badge {
+  position: absolute;
+  top: -5px;
+  right: -11px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--rt-dot);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ---------- 最近动态：按类型上色的小图标 ---------- */
-.f-ic { font-size: 16px; line-height: 1; }
-.f-ic-done { color: var(--ink); }
-.f-ic-failed { color: var(--cold); }
-.f-ic-created { color: var(--ink-3); }
-.f-ic-sealed { color: var(--ink-3); }
+/* ---------- 右下主行动按钮（悬浮球） ---------- */
 
-/* ---------- 目标卡（墨色主角 + 两张身份小票） ---------- */
-.goal-card {
-  position: relative; margin: 0 16px 10px; padding: 18px 16px 16px;
-  background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card);
-  cursor: pointer; transition: transform .15s ease;
+.rt-fabwrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--rt-tabbar) + var(--rt-safe-bottom) + 18px);
+  z-index: 25;
+  pointer-events: none;
 }
-.goal-card:active { transform: translateY(1px); }
-.goal-card::before {
-  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
-  border-radius: 16px 16px 0 0; background: var(--ink);
-}
-.goal-title {
-  margin: 0 0 6px; font-size: 17px; font-weight: 650; line-height: 1.45;
-  color: var(--ink); text-align: center;
-}
-.goal-meta {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  margin: 0 0 14px; font-size: 12.5px; color: var(--ink-3);
-}
-.goal-meta .van-icon { font-size: 14px; }
 
-/* 奖励 / 惩罚：等宽对齐，铺满整行 */
-.goal-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rt-fabwrap-inner {
+  max-width: var(--rt-maxw);
+  margin: 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 calc(16px + var(--rt-safe-right)) 0 16px;
+}
 
-.chip {
+.rt-fab {
+  pointer-events: auto;
+  width: 54px;
+  height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--rt-accent);
+  color: var(--rt-accent-fg);
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.20);
+  transition: transform 0.12s, opacity 0.15s;
+}
+.rt-fab:active:not(:disabled) { transform: scale(0.94); }
+.rt-fab:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 登录页外壳（LoginCard 用） */
+.app-bg {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--rt-bg);
+  color: var(--rt-tx);
+  padding: calc(24px + var(--rt-safe-top))
+    calc(20px + var(--rt-safe-right))
+    calc(24px + var(--rt-safe-bottom))
+    calc(20px + var(--rt-safe-left));
+}
+
+/* ---------- 文字 ---------- */
+
+.rt-meta { font-size: 12px; color: var(--rt-tx3); }
+.rt-num { font-variant-numeric: tabular-nums; }
+.rt-sec { font-size: 15px; font-weight: 500; margin: 0; }
+.rt-t14 { font-size: 14px; }
+.rt-t14s { font-size: 14px; font-weight: 500; }
+.rt-push { margin-left: auto; }
+.rt-flex1 { flex: 1; min-width: 0; }
+.rt-center-tx { text-align: center; }
+
+/* ---------- 按钮 ---------- */
+
+.rbtn {
+  padding: 5px 12px; border-radius: 8px;
+  border: 0.5px solid var(--rt-line-strong);
+  background: transparent; color: var(--rt-tx2);
+  font-size: 13px; cursor: pointer; white-space: nowrap;
+  touch-action: manipulation;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.rbtn:hover:not(:disabled) { background: var(--rt-hover); color: var(--rt-tx); }
+.rbtn:not(:disabled):active { background: var(--rt-hover); }
+.rbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.rbtn-primary {
+  padding: 5px 12px; border-radius: 8px; border: none;
+  background: var(--rt-tx); color: var(--rt-card);
+  font-size: 13px; cursor: pointer; white-space: nowrap;
+  touch-action: manipulation;
+  transition: opacity 0.15s;
+}
+.rbtn-primary:hover:not(:disabled) { opacity: 0.85; }
+.rbtn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.rbtn-lg { padding: 7px 16px; font-size: 14px; }
+/* 柔和款：浅色底 + 主色字。给"入口/次要动作"用 ——
+   整页是浅灰白的时候，一块纯黑砖头会把注意力全吸走，太重了。 */
+.rbtn-soft {
+  padding: 7px 12px; border-radius: 10px; border: none;
+  background: var(--rt-blue-bg); color: var(--rt-blue);
+  font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  touch-action: manipulation;
+  transition: opacity 0.15s;
+}
+.rbtn-soft:hover:not(:disabled) { opacity: 0.8; }
+.rbtn-soft:disabled { opacity: 0.45; cursor: not-allowed; }
+.rbtn-danger { color: var(--rt-red); border-color: var(--rt-line-strong); }
+.rbtn-danger:hover:not(:disabled) { color: var(--rt-red); border-color: var(--rt-red); background: var(--rt-red-bg); }
+
+/* ---------- 卡片与色轨 ---------- */
+
+.rt-card {
+  background: var(--rt-card);
+  border: 0.5px solid var(--rt-line);
+  border-radius: 14px;
+  /* 发丝线 + 一层柔和投影：卡片才浮得起来，整页不至于看着"扁" */
+  box-shadow: var(--rt-shadow-card);
+}
+
+/* 首页顶部的临期提醒。整条可点（点进「执行」页），所以是个 button，
+   得把浏览器默认按钮样式全部清掉。
+   用琥珀色是因为它是"警告"不是"错误" —— 还没扣分，只是快到了。 */
+.rt-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--rt-amber-bg);
+  border: 0.5px solid var(--rt-amber);
+  color: var(--rt-amber);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.rt-alert .rt-meta { color: var(--rt-amber); }
+.rt-alert > .rt-ico { flex: 0 0 auto; }
+.rt-alert-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rt-alert-sub {
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「有新版本可用」那条。用蓝色而不是琥珀色 —— 这是"信息"不是"警告"，
+   要能跟下面那条临期的琥珀色横幅一眼分开（两条可能同时出现）。 */
+.rt-alert-up {
+  background: var(--rt-blue-bg);
+  border-color: var(--rt-blue);
+  color: var(--rt-blue);
+}
+.rt-alert-up .rt-meta { color: var(--rt-blue); }
+.rt-alert-up:disabled { opacity: 0.65; cursor: default; }
+
+/* 「没加载出来」那条（网络断了 / Supabase 时钟漂移）。红色 —— 这是出错，
+   跟蓝色的"有新版"、琥珀色的"临期"三者要能一眼分开。 */
+.rt-alert-bad {
+  background: var(--rt-red-bg);
+  border-color: var(--rt-red);
+  color: var(--rt-red);
+}
+.rt-alert-bad .rt-meta { color: var(--rt-red); }
+.rt-alert-bad:disabled { opacity: 0.65; cursor: default; }
+
+.rt-cardwrap { display: flex; overflow: hidden; }
+.rt-rail { flex: 0 0 3px; align-self: stretch; }
+.rt-rail-blue { background: var(--rt-rail-blue); }
+.rt-rail-green { background: var(--rt-rail-green); }
+.rt-rail-amber { background: var(--rt-rail-amber); }
+.rt-rail-gray { background: var(--rt-rail-gray); }
+
+/* ---------- 状态 pill ---------- */
+
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 1px 8px; border-radius: 999px;
+  font-size: 12px; line-height: 18px; white-space: nowrap;
+}
+.p-blue { background: var(--rt-blue-bg); color: var(--rt-blue); }
+.p-green { background: var(--rt-green-bg); color: var(--rt-green); }
+.p-amber { background: var(--rt-amber-bg); color: var(--rt-amber); }
+.p-red { background: var(--rt-red-bg); color: var(--rt-red); }
+.p-gray { background: var(--rt-gray-bg); color: var(--rt-gray); }
+
+/* ---------- 目标卡内的节点行 ---------- */
+
+.rt-node { display: flex; gap: 10px; }
+.rt-node-lbl { flex: 0 0 30px; font-size: 12px; color: var(--rt-tx3); padding-top: 3px; }
+.rt-node-body { flex: 1; min-width: 0; }
+.rt-line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rt-line2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 8px; margin-top: 5px; }
+.rt-sep { border: none; border-top: 0.5px solid var(--rt-line); margin: 14px 0 14px 40px; }
+
+/* 一行里的操作按钮：靠右，放不下就整体换行（窄屏常见） */
+.rt-btns { display: flex; gap: 8px; margin-left: auto; }
+
+/* 两栏对照卡里的按钮：整栏内靠右，宽度封顶，不给它拉满 */
+.rt-actrow { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.rt-actrow > * { flex: 1 1 0; max-width: 140px; padding-top: 7px; padding-bottom: 7px; }
+
+/* ---------- 首页：活力值主区 / 统计 / 列表 ---------- */
+
+.rt-vital { display: flex; align-items: flex-end; gap: 16px; padding: 18px 18px 16px; }
+.rt-vital-num { margin: 2px 0 0; font-size: 38px; font-weight: 600; line-height: 1.05; }
+.rt-vital-side { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+/* 押注说明：跟数字同一个左边界，收在卡里 */
+.rt-vital-legend { margin: 0; padding: 0 18px 16px; font-size: 12px; color: var(--rt-tx3); }
+
+.rt-strip { display: grid; grid-template-columns: 1fr 1fr; }
+.rt-strip > * { padding: 12px 16px; }
+.rt-strip > *:nth-child(odd) { border-right: 0.5px solid var(--rt-line); }
+.rt-strip > *:nth-child(-n+2) { border-bottom: 0.5px solid var(--rt-line); }
+.rt-strip-val { margin: 2px 0 0; font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.rt-li { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.rt-li + .rt-li { border-top: 0.5px solid var(--rt-line); }
+.rt-li-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-li-2 { flex: 1; min-width: 0; }
+.rt-li-2 > .rt-li-2-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 列表项的左侧图标（对齐到第一行文字的中线，别顶到上沿） */
+.rt-li-ic {
+  flex: 0 0 20px; width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--rt-tx3);
+}
+.rt-li-ic .rt-ico { width: 18px; height: 18px; }
+
+/* 能点进目标的动态行 */
+.rt-li-link { cursor: pointer; }
+.rt-li-link:active { opacity: 0.7; }
+
+/* 动态按类型上色：做到 = 绿，做不到 = 红。
+   封档不给颜色 —— 它既可能免费也可能扣分，图标断言不了符号，交给中性灰。 */
+.rt-li-ic-done { color: var(--rt-green); }
+.rt-li-ic-failed { color: var(--rt-red); }
+.rt-li-ic-created { color: var(--rt-tx3); }
+.rt-li-ic-sealed { color: var(--rt-tx3); }
+
+/* ---------- 存档页签（横向滚动，手机上不换行） ---------- */
+
+.rt-chips {
+  display: flex; align-items: center; gap: 8px;
+  overflow-x: auto; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 0 4px;
+}
+.rt-chips::-webkit-scrollbar { display: none; }
+.rt-chip {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 14px;
+  border: none; border-radius: 999px;
+  background: var(--rt-sub); color: var(--rt-tx2);
+  font-size: 13px; cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.15s, color 0.15s;
+}
+.rt-chip:active { opacity: 0.75; }
+.rt-chip.active { background: var(--rt-blue-bg); color: var(--rt-blue); font-weight: 500; }
+.rt-chip-add {
+  background: transparent; color: var(--rt-tx3);
+  border: 0.5px dashed var(--rt-line-strong);
+}
+.rt-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--rt-dot); }
+
+/* ---------- 通用间距 ---------- */
+
+.rt-bar { display: flex; align-items: center; gap: 8px; }
+.rt-pad { padding: 14px 16px; }
+.rt-pad-lg { padding: 16px; }
+/* 间距工具类：**必须带 !important**，别改成普通的 margin-top。
+   这份 style.css 里有一批组件类用了 `margin: 0 0 Npx` 这种**简写**
+   （.rt-cap / .rt-legend / .rt-detail-t / .wz-h / .rt-note …）。
+   简写会把 margin-top 一起重置成 0；而它们大多排在这几行**之后**，
+   同为单类选择器、特异性相同 → 后声明的赢 → 工具类写多少都被吃掉，
+   表现就是"间距明明写了却完全不生效"。加 !important 才算真的契约。 */
+.rt-gap12 { margin-top: 12px !important; }
+.rt-gap8 { margin-top: 8px !important; }
+.rt-gap20 { margin-top: 20px !important; }
+/* 分组标题专用：上下各留出足够空白，才切得开前后两组卡片 */
+.rt-gap26 { margin-top: 40px !important; }
+.rt-note { margin: 6px 2px 0; }
+.rt-hint { margin: 10px 2px 0; }
+
+/* ---------- 分段选择 ---------- */
+
+.rt-seg { display: flex; gap: 6px; }
+
+.rt-segbtn {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 9px 10px;
+  border: 0.5px solid var(--rt-line-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--rt-tx2);
+  font-size: 13px; cursor: pointer; text-align: left;
+  touch-action: manipulation;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.rt-segbtn:active { opacity: 0.75; }
+.rt-segbtn:disabled { opacity: 0.4; cursor: default; }
+.rt-segbtn.active {
+  border-color: var(--rt-blue);
+  background: var(--rt-blue-bg);
+  color: var(--rt-blue);
+  font-weight: 500;
+}
+.rt-segbtn.active .rt-meta { color: var(--rt-blue); opacity: 0.85; }
+
+/* ---------- 表单：一行两列，窄屏自动堆叠 ---------- */
+
+.rt-form-row { display: flex; gap: 12px; }
+
+/* ---------- 底部抽屉（Vant popup 套 rt-sheet） ---------- */
+
+.van-popup--bottom.van-popup--round { border-radius: 16px 16px 0 0; }
+
+/* 宽屏（桌面浏览器）上抽屉要跟内容列同宽并居中。
+   只动 left / margin，**不碰 transform** —— Vant 的滑入动画就是靠 transform 做的。 */
+@media (min-width: 641px) {
+  .van-popup--bottom {
+    left: 50%;
+    right: auto;
+    width: var(--rt-maxw);
+    margin-left: calc(var(--rt-maxw) / -2);
+  }
+}
+
+.rt-sheet-inner {
+  width: 100%;
+  max-width: var(--rt-maxw);
+  margin: 0 auto;
+  padding: 0 0 calc(14px + var(--rt-safe-bottom));
+}
+/* 抽屉顶部的抓手，暗示可以下滑关闭 */
+.rt-sheet-inner::before {
+  content: '';
+  display: block;
+  width: 36px; height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 2px;
+  background: var(--rt-line-strong);
+}
+.rt-sheet-head {
+  padding: 6px 18px 12px;
+  font-size: 16px; font-weight: 600;
+  margin: 0;
+}
+.rt-sheet-body {
+  padding: 0 18px;
+  max-height: calc(88dvh - 110px);
+  overflow-y: auto;
+}
+.rt-sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 12px 18px 2px;
+}
+.rt-sheet-actions .rbtn,
+.rt-sheet-actions .rbtn-primary {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+/* 抽屉里的操作项列表（点整行，比下拉菜单好按） */
+.rt-sheetlist { display: flex; flex-direction: column; margin-top: 8px; padding: 0 18px; }
+.rt-sheetitem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 14px 2px;
+  border: none;
+  border-top: 0.5px solid var(--rt-line);
+  background: transparent;
+  color: var(--rt-tx);
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.rt-sheetitem:active:not(:disabled) { opacity: 0.6; }
+.rt-sheetitem:disabled { opacity: 0.45; cursor: not-allowed; }
+.rt-sheetitem-danger { color: var(--rt-red); }
+
+/* ---------- 窄屏微调 ---------- */
+
+@media (max-width: 400px) {
+  .rt-seg { gap: 4px; }
+  .rt-segbtn { padding: 8px 7px; font-size: 12px; }
+  .rt-form-row { flex-direction: column; gap: 0; }
+}
+
+/* ============================================================
+   Vant 令牌桥
+   —— 颜色只维护上面那一份 --rt-*，这里负责翻译给 Vant。
+   注意：禁止把 --van-primary-color 指向 --rt-tx（深色下是白）——
+   那样主按钮会变成"浅底白字"，深色模式里直接看不见。
+   ============================================================ */
+
+:root {
+  --van-primary-color: var(--rt-accent);
+  --van-danger-color: var(--rt-red);
+  --van-success-color: var(--rt-green);
+
+  --van-background: var(--rt-bg);
+  --van-background-2: var(--rt-card);
+  --van-background-3: var(--rt-card);
+  --van-text-color: var(--rt-tx);
+  --van-text-color-2: var(--rt-tx2);
+  --van-text-color-3: var(--rt-tx3);
+  --van-border-color: var(--rt-line);
+  --van-active-color: var(--rt-hover);
+  --van-active-opacity: 1;
+
+  /* 单元格 / 分组 */
+  --van-cell-background: transparent;
+  --van-cell-text-color: var(--rt-tx);
+  --van-cell-value-color: var(--rt-tx3);
+  --van-cell-border-color: var(--rt-line);
+  --van-cell-group-background: transparent;
+  --van-cell-group-title-color: var(--rt-tx3);
+  --van-cell-group-inset-padding: 0;
+
+  /* 弹层 */
+  --van-popup-background: var(--rt-card);
+  --van-overlay-background: rgba(0, 0, 0, 0.55);
+  --van-popup-round-radius: 16px;
+
+  /* 按钮：圆角与主色跟着设计系统走 */
+  --van-button-default-background: transparent;
+  --van-button-default-color: var(--rt-tx2);
+  --van-button-default-border-color: var(--rt-line-strong);
+  --van-button-primary-color: var(--rt-accent-fg);
+  --van-button-primary-background: var(--rt-accent);
+  --van-button-primary-border-color: var(--rt-accent);
+  --van-button-danger-color: #fff;
+  --van-button-danger-background: var(--rt-red);
+  --van-button-danger-border-color: var(--rt-red);
+  --van-button-plain-background: transparent;
+  --van-button-radius: 8px;
+  --van-button-normal-font-size: 14px;
+
+  /* 输入 */
+  --van-field-label-color: var(--rt-tx2);
+  --van-field-input-text-color: var(--rt-tx);
+  --van-field-placeholder-text-color: var(--rt-tx3);
+
+  /* 标签栏（真项目用自绘 .rt-tabbar，这里只是兜底） */
+  --van-tabbar-background: var(--rt-card);
+  --van-tabbar-item-text-color: var(--rt-tx3);
+  --van-tabbar-item-active-color: var(--rt-blue);
+  --van-tabbar-item-active-background: transparent;
+
+  --van-tabs-bottom-bar-color: var(--rt-blue);
+  --van-tab-active-text-color: var(--rt-tx);
+  --van-tab-text-color: var(--rt-tx3);
+  --van-nav-bar-background: transparent;
+  --van-nav-bar-title-text-color: var(--rt-tx);
+  --van-nav-bar-icon-color: var(--rt-tx2);
+  --van-nav-bar-text-color: var(--rt-blue);
+  --van-nav-bar-height: 46px;
+
+  --van-notice-bar-background: transparent;
+  --van-notice-bar-text-color: var(--rt-tx2);
+  --van-notice-bar-height: 36px;
+  --van-notice-bar-padding: 0 12px;
+  --van-notice-bar-font-size: 13px;
+
+  --van-checkbox-checked-icon-color: var(--rt-accent);
+  --van-checkbox-border-color: var(--rt-line-strong);
+  --van-checkbox-size: 18px;
+
+  --van-radio-checked-icon-color: var(--rt-accent);
+  --van-radio-border-color: var(--rt-line-strong);
+
+  --van-switch-on-background: var(--rt-accent);
+  --van-switch-background: var(--rt-track);
+
+  --van-loading-spinner-color: var(--rt-tx3);
+  --van-empty-description-color: var(--rt-tx3);
+  --van-divider-border-color: var(--rt-line);
+  --van-divider-text-color: var(--rt-tx3);
+  --van-picker-background: var(--rt-card);
+  --van-picker-option-text-color: var(--rt-tx);
+  --van-picker-cancel-action-color: var(--rt-tx3);
+  --van-picker-confirm-action-color: var(--rt-blue);
+  --van-picker-toolbar-height: 48px;
+  --van-picker-title-text-color: var(--rt-tx);
+  --van-picker-mask-color: linear-gradient(180deg, var(--rt-card), rgba(255, 255, 255, 0.9)),
+    linear-gradient(0deg, var(--rt-card), rgba(255, 255, 255, 0.9));
+  --van-action-sheet-header-font-size: 15px;
+  --van-action-sheet-item-text-color: var(--rt-tx);
+  --van-dialog-background: var(--rt-card);
+  --van-dialog-header-font-weight: 500;
+  --van-dialog-radius: 14px;
+  --van-toast-background: rgba(0, 0, 0, 0.78);
+  --van-toast-radius: 10px;
+  --van-skeleton-paragraph-background: var(--rt-track);
+  --van-skeleton-title-background: var(--rt-track);
+}
+
+[data-theme='dark'] {
+  /* 深色下的遮罩要更"重"一点，不然弹层跟背景糊在一起 */
+  --van-overlay-background: rgba(0, 0, 0, 0.7);
+  /* 选择器遮罩用的是写死的白色渐变，深色下必须换掉 */
+  --van-picker-mask-color: linear-gradient(180deg, var(--rt-card), rgba(29, 29, 29, 0.9)),
+    linear-gradient(0deg, var(--rt-card), rgba(29, 29, 29, 0.9));
+  --van-toast-background: rgba(255, 255, 255, 0.16);
+}
+
+/* Vant 组件细部：让它看起来像这个设计系统里的东西，而不是"默认 Vant" */
+.van-button--small { padding: 0 10px; }
+.van-cell { padding: 10px 0; line-height: 1.5; font-size: 14px; }
+.van-cell__label { font-size: 12px; margin-top: 4px; color: var(--rt-tx3); }
+.van-cell-group--inset { margin: 0; }
+.van-field { padding: 10px 0; }
+.van-field__label { font-size: 14px; color: var(--rt-tx2); }
+
+/* ============================================================
+   v2.0 新块（机制重做后新增的）
+   ============================================================ */
+
+/* ---------- 首页：两个入口按钮（要小，别抢活力值的主角位） ---------- */
+.rt-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;margin-bottom: 12px; }
+.rt-quick .rbtn,
+.rt-quick .rbtn-soft {
   display: flex; align-items: center; justify-content: center; gap: 5px;
-  height: 36px; min-width: 0; max-width: 100%; padding: 0 12px;
-  border-radius: 10px; font-size: 12.5px; font-weight: 600; line-height: 1;
+  padding: 8px 10px; font-size: 13.5px; border-radius: 10px;
 }
-.chip .van-icon { flex: none; font-size: 14px; }
-.chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip-warm { background: var(--warm-bg); color: var(--warm-deep); }
-.chip-cold { background: var(--cold-bg); color: var(--cold-deep); }
-.chip-ink { background: var(--ink-soft); color: var(--ink-2); }
 
-/* ---------- 待办 / 愿望 ---------- */
-/* 多次待办 = 电量格 + 还剩 N / M 次 */
-.batt-line { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
-.batt { display: inline-flex; align-items: center; gap: 3px; }
-.batt i { width: 8px; height: 8px; border-radius: 2px; background: var(--batt-off); }
-.batt i.on { background: var(--ink); }
-.batt-tx { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* ---------- 目标卡：标题居中，奖励 / 惩罚等宽并排铺满 ---------- */
+/* 身上不画任何装饰线 —— 身份靠"居中标题 + 暖/冷两张小票"表达就够了 */
+.rt-goal {
+  padding: 18px 16px 16px;
+  cursor: pointer;
+}
+.rt-goal + .rt-goal { margin-top: 12px; }
+.rt-goal:active { opacity: 0.9; }
+.rt-goal-t {
+  margin: 0 0 6px;
+  font-size: 17px; font-weight: 600; line-height: 1.45;
+  text-align: center;
+}
+.rt-goal-m {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  font-size: 12px; color: var(--rt-tx3);
+}
+.rt-goal-m .rt-ico { width: 14px; height: 14px; }
+
+.rt-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* 名字不能叫 .rt-chip —— 那是上面存档页签的胶囊，会把它压成圆角方块 */
+.rt-slug {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  height: 36px; min-width: 0; padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13px; font-weight: 500;
+}
+.rt-slug .rt-ico { flex: 0 0 14px; width: 14px; height: 14px; }
+.rt-slug-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-slug-warm { background: var(--rt-warm-bg); color: var(--rt-warm); }
+.rt-slug-cold { background: var(--rt-cold-bg); color: var(--rt-cold); }
+
+/* ---------- 待办的「次数」（电量格）与「内容」 ---------- */
+.rt-batt { display: inline-flex; align-items: center; gap: 3px; }
+.rt-batt i { width: 8px; height: 8px; border-radius: 2px; background: var(--rt-batt-off); }
+.rt-batt i.on { background: var(--rt-tx); }
+.rt-batt-tx { font-size: 12px; color: var(--rt-tx3); font-variant-numeric: tabular-nums; }
 /* 待办的内容：一道竖线当引用，跟标题分开 */
-.t-note { margin: 6px 0 0; padding-left: 8px; border-left: 2px solid var(--line); }
-
-.row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.muted .van-cell__title { color: var(--ink-3); }
-
-/* ---------- 目标页：存档 chips + 封档 ---------- */
-.a-chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px 4px; scrollbar-width: none; }
-.a-chips::-webkit-scrollbar { display: none; }
-.a-chip {
-  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 14px;
-  border-radius: 99px; border: 1px solid var(--line); background: var(--card);
-  color: var(--ink-2); font-size: 13px; cursor: pointer; transition: all .15s;
-}
-.a-chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.a-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.a-chip.on .dot { background: var(--bg); }
-.a-chip-add { color: var(--ink-3); border-style: dashed; }
-.seal-row { display: flex; align-items: center; gap: 8px; margin: 10px 16px 4px; }
-.seal-hint { font-size: 12px; color: var(--ink-3); }
-.seal-row .van-button { margin-left: auto; }
-
-/* ---------- 历史：封档记录（只读） ---------- */
-.sec { margin: 14px 16px 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.h-card {
-  margin: 0 16px 10px; padding: 13px 16px; background: var(--card); border-radius: 14px;
-  box-shadow: var(--shadow-card); cursor: pointer; transition: transform .15s;
-}
-.h-card:active { transform: translateY(1px); }
-.h-card.on { outline: 2px solid var(--accent); outline-offset: -2px; }
-.h-head { display: flex; align-items: center; gap: 8px; }
-.h-lock { font-size: 14px; color: var(--ink-3); }
-.h-name {
-  flex: 1; min-width: 0; font-size: 15px; font-weight: 600; color: var(--ink);
+.rt-quote { margin: 5px 0 0; padding-left: 8px; border-left: 2px solid var(--rt-line); }
+.rt-li-2 .rt-quote {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-left-color: var(--rt-line-strong);
 }
-.h-pill { flex: none; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; line-height: 22px; }
-.h-pill-paid { background: var(--cold-bg); color: var(--cold-deep); }
-.h-pill-free { background: var(--warm-bg); color: var(--warm-deep); }
-.h-time { margin: 6px 0 0; font-size: 12px; color: var(--ink-3); }
+
+/* 已完成 / 已实现的整行压灰 */
+.rt-done .rt-li-2-t { color: var(--rt-tx3); }
+
+/* ---------- 目标页：存档页签行 + 封档 ---------- */
+.rt-archrow {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 14px;
+}
+.rt-archrow .rt-chips { flex: 1; min-width: 0; }
+
+/* ---------- 历史：封档卡 + 记录 ---------- */
+.rt-hcard {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.rt-hcard + .rt-hcard { margin-top: 10px; }
+/* 选中：一圈 1px 主色环（原来是 2px 硬描边，套在圆角卡上很刺眼） */
+.rt-hcard.active {
+  border-color: var(--rt-accent);
+  box-shadow: 0 0 0 1px var(--rt-accent), var(--rt-shadow-card);
+}
+.rt-hcard-ic { flex: 0 0 20px; color: var(--rt-tx3); }
+.rt-hname { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; }
+.rt-hname > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- 目标详情 ---------- */
-.d-page { height: 100%; display: flex; flex-direction: column; background: var(--bg); }
-.d-body { flex: 1; overflow-y: auto; padding: 4px 0 20px; }
-.hero {
-  margin: 14px 16px 8px; font-size: 22px; line-height: 1.45; font-weight: 700;
-  color: var(--ink); letter-spacing: -.01em;
+.rt-detail-t { margin: 10px 0 0; font-size: 22px; font-weight: 600; line-height: 1.45; }
+.rt-detail-m {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; font-size: 13px; color: var(--rt-tx3);
 }
-.d-meta { display: flex; align-items: center; gap: 8px; margin: 0 16px 18px; color: var(--ink-3); font-size: 13px; }
-.panel { border-radius: 14px; padding: 14px 16px; margin: 0 16px 10px; }
-.panel-warm { background: var(--warm-bg); }
-.panel-cold { background: var(--cold-bg); }
-.p-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-.panel-warm .p-head { color: var(--warm-deep); }
-.panel-cold .p-head { color: var(--cold-deep); }
-.p-text { margin: 0; font-size: 15px; color: var(--ink); line-height: 1.55; }
-.p-sub { margin: 6px 0 0; font-size: 12px; line-height: 1.55; }
-.panel-warm .p-sub { color: var(--warm-deep); opacity: .75; }
-.panel-cold .p-sub { color: var(--cold-deep); opacity: .75; }
-.d-exec-label {
-  display: flex; align-items: center; gap: 6px; margin: 20px 16px 8px;
-  font-size: 12px; letter-spacing: .06em; color: var(--ink-3);
+.rt-panel { padding: 14px 16px; border-radius: 12px; border: 1px solid transparent; }
+/* 奖励 / 惩罚两块要一眼分得开：底色 + 一道同色描边（原型就是这么定的） */
+.rt-panel-warm { background: var(--rt-warm-bg); border-color: var(--rt-warm-line); }
+.rt-panel-cold { background: var(--rt-cold-bg); border-color: var(--rt-cold-line); }
+.rt-panel-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; margin-bottom: 5px;
+}
+.rt-panel-warm .rt-panel-head, .rt-panel-warm .rt-panel-sub { color: var(--rt-warm); }
+.rt-panel-cold .rt-panel-head, .rt-panel-cold .rt-panel-sub { color: var(--rt-cold); }
+.rt-panel-tx { margin: 0; font-size: 15px; color: var(--rt-tx); line-height: 1.55; }
+.rt-panel-sub { margin: 5px 0 0; font-size: 12px; line-height: 1.55; opacity: 0.85; }
+
+/* ---------- 标题分隔（"怎么做" / "最近发生了什么" / "已勾掉"） ----------
+   它得能当"分组标题"用：加粗到 600、下面留 10px，
+   上下再用 .rt-gap26 跟前后两张卡拉开 —— 否则会被夹在两张卡中间，像掉进缝里。 */
+.rt-cap {
+  display: flex; align-items: center; gap: 6px;
+  /* 只写 margin-bottom，**不要写 margin 简写** ——
+     简写会把上面的 .rt-gap* 一起清零（margin-top 归 0），
+     结果就是"类里写了 40px、屏幕上一分不见"。 */
+  margin-bottom: 10px;
+  font-size: 13px; font-weight: 600; color: var(--rt-tx2);
 }
 
 /* ---------- 立项向导 ---------- */
-.wz-page { height: 100%; display: flex; flex-direction: column; background: var(--bg); }
-.wz-body { flex: 1; overflow-y: auto; padding-bottom: 12px; }
-.wz-h { margin: 10px 16px 6px; font-size: 20px; font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
-.wz-sub { margin: 0 16px 16px; font-size: 13px; color: var(--ink-3); line-height: 1.7; }
-.dots { display: flex; gap: 6px; padding: 2px 16px 8px; }
-.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--batt-off); transition: background .15s; }
-.dots i.on { background: var(--ink); }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 16px 14px; }
-.segline { display: flex; gap: 8px; margin: 0 16px 14px; }
-.segline .van-button { flex: 1; height: 38px; padding: 0 6px; font-size: 13.5px; }
-.segline-pad { margin: 10px 16px 6px; }
-.legend2 { padding: 0 16px 12px; font-size: 12px; color: var(--ink-3); }
-.wz-body .van-notice-bar { margin: 6px 16px 0; border-radius: 10px; }
-
-/* ---------- 底部动作条 ---------- */
-.foot {
-  display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px;
-  padding: 10px 16px calc(12px + var(--rt-safe-bottom));
-  background: var(--card); border-top: 1px solid var(--line);
+.wz-dots { display: flex; gap: 6px; padding: 0 0 10px; }
+.wz-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--rt-batt-off); transition: background 0.15s; }
+.wz-dots i.on { background: var(--rt-tx); }
+.wz-h { margin: 10px 0 6px; font-size: 20px; font-weight: 600; line-height: 1.4; }
+.wz-sub { margin: 0 0 16px; font-size: 13px; color: var(--rt-tx3); line-height: 1.7; }
+.wz-picked {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; margin-bottom: 10px;
+  border-radius: 10px; background: var(--rt-sub); font-size: 13px;
 }
+/* 向导里的分组选择（挑 / 写、档位、快捷死线）—— 等分格，不放不下就换行 */
+.rt-segline { display: grid; gap: 8px; margin-bottom: 14px; }
+.rt-segline-2 { grid-template-columns: 1fr 1fr; }
+.rt-segline-3 { grid-template-columns: repeat(3, 1fr); }
+.rt-segline-4 { grid-template-columns: repeat(4, 1fr); }
+.rt-segline .van-button { height: 38px; padding: 0 4px; font-size: 13px; }
+.rt-chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.rt-legend { margin: 10px 2px 0; font-size: 12px; color: var(--rt-tx3); line-height: 1.7; }
 
-/* ---------- 底部抽屉（待办编辑 / 更多） ---------- */
-.sheet { padding-top: 16px; padding-bottom: var(--rt-safe-bottom); }
-.sheet-head { padding: 0 16px 12px; font-size: 16px; font-weight: 650; color: var(--ink); }
-.sheet-list { display: flex; flex-direction: column; padding-bottom: 12px; }
-.sheet-item {
-  display: flex; align-items: center; gap: 10px; padding: 14px 16px;
-  font-size: 15px; color: var(--ink); background: none; border: 0; text-align: left;
-  cursor: pointer;
+/* 卡片里的行列表（外边距由卡片负责，行自己不给左右 padding） */
+.rt-listpad { padding: 4px 16px; }
+
+/* ---------- 全屏浮层（目标详情 / 立项向导） ---------- */
+.rt-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--rt-bg);
+  /* 全屏浮层要自己让开状态栏与手势条 */
+  padding-top: var(--rt-safe-top);
+  padding-bottom: var(--rt-safe-bottom);
 }
-.sheet-item:active { background: var(--ink-soft); }
-.sheet-item:disabled { opacity: .45; }
-.sheet-item-danger { color: #C0392B; }
-.sheet-note { padding: 0 16px 10px; font-size: 12px; color: var(--ink-3); }
-
-/* ---------- 登录 / 加载 ---------- */
-.rt-boot { min-height: 100dvh; display: flex; align-items: center; justify-content: center; color: var(--ink-3); }
+.rt-page-head {
+  flex: 0 0 auto;
+  height: var(--rt-appbar);
+  display: flex; align-items: center; gap: 8px;
+  /* 左边 9px：34px 的图标按钮里 20px 图标居中，视觉上正好落在 16px 内容线上；
+     右边 16px：顶栏右侧的动作（返回/放弃）跟下面的卡片右边缘对齐 */
+  padding: 0 16px 0 9px;
+}
+.rt-page-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px 20px; }
+.rt-page-foot {
+  flex: 0 0 auto;
+  display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px;
+  padding: 10px 16px 12px;
+  background: var(--rt-card);
+  border-top: 0.5px solid var(--rt-line);
+}
+.rt-page-foot > * { padding-top: 7px !important; padding-bottom: 7px !important; }
+/* 底栏只有一个动作时：居中，别缩在 1fr 那一列里靠左 */
+.rt-page-foot-solo { display: flex; justify-content: center; }
+.rt-page-foot-solo > * { min-width: 200px; }

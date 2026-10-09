@@ -50,7 +50,7 @@ const authError = ref('')
 export function friendlyError(e: unknown): string {
   const raw = (e as { message?: string })?.message ?? String(e)
   const map: [RegExp, string][] = [
-    [/rate limit|too many requests/i, '发送太频繁了 —— Supabase 限制每个邮箱 60 秒一次，等一会儿再试'],
+    [/rate limit|too many requests/i, '发送太频繁了，60 秒一次，等一会儿再试'],
     [/token has expired or is invalid/i, '验证码不对或已过期，重新发一个吧'],
     [/invalid.*(otp|token)|otp.*(expired|invalid)/i, '验证码不对或已过期，重新发一个吧'],
     [/auth session missing|session.*missing|not authenticated/i, '登录态已失效，重新验证一次邮箱'],

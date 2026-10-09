@@ -90,13 +90,13 @@ export function bindSignOut(fn: () => Promise<void>) { forceSignOut = fn }
 
 export async function reportError(e: unknown, prefix = ''): Promise<void> {
   if (isNetworkError(e)) {
-    loadFail.value = '连不上服务器。检查下网络，然后点这里重试'
-    showToast('连不上服务器 —— 是网络的问题，你的数据没事')
+    loadFail.value = '连不上服务器，点这里重试'
+    showToast('连不上服务器，数据没事')
     return
   }
   if (isClockSkewError(e)) {
-    loadFail.value = 'Supabase 的服务器时钟飘了（平台侧的问题），等一两分钟点这里重试'
-    showToast('服务器时钟没对上，等一两分钟就好')
+    loadFail.value = '服务器时钟对不上，等一两分钟点这里重试'
+    showToast('服务器时钟没对上，等一会儿就好')
     return
   }
   if (isAuthError(e)) {
@@ -196,12 +196,10 @@ export function resetAll() {
 
 // ---------- 存档 ----------
 
-export async function newArchive() {
-  if (!openArchives.value.length) {
-    // 一条都没有时给个默认名，之后可以改
-    return void doCreateArchive('现在')
-  }
-  await doCreateArchive(`新档 ${openArchives.value.length + 1}`)
+export async function newArchive(name: string) {
+  const n = name.trim()
+  if (!n) return
+  await doCreateArchive(n)
 }
 
 async function doCreateArchive(name: string) {
@@ -223,7 +221,7 @@ export async function sealArchive(id: string) {
   busy.value = true
   try {
     const penalty = await apiSealArchive(id)
-    showToast(penalty < 0 ? `已封档 · 扣 ${Math.abs(penalty)} 活力值` : '已封档 —— 全部完成，免费')
+    showToast(penalty < 0 ? `已封档，扣 ${Math.abs(penalty)} 活力值` : '已封档，免费')
     activeArchiveId.value = null
     historyArchiveId.value = id
     await refresh()
@@ -312,8 +310,8 @@ export async function saveExec(id: string, exec: string) {
 export function askGiveUp(goal: Goal) {
   showConfirmDialog({
     title: '放弃这个目标？',
-    message: `放弃 = 做不到：扣 ${goal.stake} 活力值`
-      + (goal.todo_id ? '，并退回待办（次数不动）' : '') + '。',
+    message: `扣 ${goal.stake} 活力值`
+      + (goal.todo_id ? '，退回待办' : '') + '。',
     confirmButtonText: '放弃',
     confirmButtonColor: '#C0392B',
   }).then(() => void giveUpGoal(goal)).catch(() => {})
@@ -326,9 +324,9 @@ export function askSeal() {
   showConfirmDialog({
     title: `封档「${a.name}」？`,
     message: pending
-      ? `这个存档还有没做完的事 —— 封档会扣当前活力值的 10%（约 ${Math.max(0, Math.round(vitality.value * 0.1))} 分），`
-        + '档内没做完的目标会一并关闭。'
-      : '全部走向奖励分支 —— 免费封档。',
+      ? `还有事没做完：扣 ${Math.max(0, Math.round(vitality.value * 0.1))} 活力值，`
+        + '没做完的目标一起关掉。'
+      : '都做完了，免费封档。',
     confirmButtonText: '封档',
   }).then(() => void sealArchive(a.id)).catch(() => {})
 }
@@ -377,7 +375,18 @@ export async function addWish(content: string) {
 export async function toggleWish(w: Wish) {
   try {
     if (w.status === 'done') { await reopenWish(w.id); w.status = 'open'; w.done_at = null }
-    else { await setWishDone(w.id, activeArchiveId.value); w.status = 'done'; w.done_at = new Date().toISOString() }
+    else {
+      // 已挂给进行中目标的愿望不能提前兑现：否则那个目标达成时无处可兑
+      // （setWishDone 带 status='open' 条件，会**静默地影响 0 行**）。见 docs/feedback.md 2026-09-28。
+      const hooked = goals.value.find((g) => g.status === 'active' && g.reward_wish_id === w.id)
+      if (hooked) {
+        showToast(`这个愿望已经挂给「${hooked.content}」了，等它出结果`)
+        return
+      }
+      await setWishDone(w.id, activeArchiveId.value)
+      w.status = 'done'
+      w.done_at = new Date().toISOString()
+    }
   } catch (e) {
     await reportError(e)
   }

@@ -60,10 +60,6 @@ function reset() {
   execSeed = ''
 }
 
-/**
- * 待办的「内容」带进执行区当起点（见 mechanism.md）。
- * 只在用户还没动过执行区的时候灌 —— 一旦自己写了，就不能再被覆盖。
- */
 watch(
   () => [wz.source, wz.pickId] as const,
   () => {
@@ -183,128 +179,192 @@ function cancel() {
 <template>
   <van-popup :show="show" position="bottom" :style="{ height: '100%' }" :duration="0.25"
     :close-on-click-overlay="false" @update:show="(v: boolean) => emit('update:show', v)">
-    <div class="wz-page">
-      <van-nav-bar :title="'第 ' + wz.step + ' / 6 页'" left-arrow @click-left="cancel" />
-      <div class="dots"><i v-for="n in 6" :key="n" :class="{ on: n === wz.step }"></i></div>
-      <div class="wz-body">
+    <div class="rt-page">
+      <div class="rt-page-head">
+        <button class="rt-iconbtn" aria-label="返回" @click="cancel()">
+          <svg class="rt-ico" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 5.5 8.5 12l6.5 6.5" />
+          </svg>
+        </button>
+        <span class="rt-sec">第 {{ wz.step }} / 6 页</span>
+      </div>
+
+      <div class="rt-page-body">
+        <div class="wz-dots"><i v-for="n in 6" :key="n" :class="{ on: n === wz.step }"></i></div>
+
         <!-- ① 目标 -->
         <template v-if="wz.step === 1">
-          <h3 class="wz-h">要立一个什么目标？</h3>
-          <p class="wz-sub">从待办里挑一条，或者临时起意写一个。</p>
-          <div class="segline">
-            <van-button :type="wz.source === 'todo' ? 'primary' : 'default'"
-              :plain="wz.source !== 'todo'" @click="wz.source = 'todo'">从待办挑</van-button>
-            <van-button :type="wz.source === 'free' ? 'primary' : 'default'"
-              :plain="wz.source !== 'free'" @click="wz.source = 'free'">自己写</van-button>
+          <h3 class="wz-h">立什么目标？</h3>
+          <p class="wz-sub">从待办挑，或者自己写。</p>
+          <div class="rt-seg" style="margin-bottom:12px">
+            <button class="rt-segbtn" :class="{ active: wz.source === 'todo' }"
+              @click="wz.source = 'todo'">
+              <span>从待办挑</span>
+              <span class="rt-meta">{{ openTodos.length }} 条待办</span>
+            </button>
+            <button class="rt-segbtn" :class="{ active: wz.source === 'free' }"
+              @click="wz.source = 'free'">
+              <span>自己写</span>
+              <span class="rt-meta">临时起意</span>
+            </button>
           </div>
+
           <van-radio-group v-if="wz.source === 'todo'" v-model="wz.pickId">
-            <van-cell-group v-if="openTodos.length" inset>
-              <van-cell v-for="t in openTodos" :key="t.id" :title="t.content" clickable
-                @click="wz.pickId = t.id">
-                <template #right-icon><van-radio :name="t.id" /></template>
-              </van-cell>
-            </van-cell-group>
-            <van-empty v-else description="待办是空的 —— 切到「自己写」吧" />
+            <div class="rt-card rt-listpad">
+              <div v-for="t in openTodos" :key="t.id" class="rt-li" @click="wz.pickId = t.id">
+                <span class="rt-li-ic"><van-radio :name="t.id" /></span>
+                <div class="rt-li-2">
+                  <div class="rt-li-2-t">{{ t.content }}</div>
+                  <div v-if="t.note" class="rt-meta rt-quote">{{ t.note }}</div>
+                </div>
+              </div>
+              <div v-if="!openTodos.length" class="rt-li">
+                <span class="rt-meta">没有待办</span>
+              </div>
+            </div>
           </van-radio-group>
-          <van-cell-group v-else inset>
-            <van-field v-model="wz.title" label="目标" placeholder="比如：把阳台收拾出来" />
-          </van-cell-group>
+
+          <div v-else class="rt-card rt-listpad">
+            <van-field v-model="wz.title" label="目标" placeholder="想做什么" />
+          </div>
         </template>
 
         <!-- ② 死线 + 押注 -->
         <template v-else-if="wz.step === 2">
-          <h3 class="wz-h">什么时候做到？押多少？</h3>
-          <p class="wz-sub">到点没做到就算判负 —— 押多少，输了就扣多少。</p>
-          <div class="chips">
-            <van-button v-for="q in quickDues" :key="q.label" size="small" round
-              :type="wz.dueLabel === q.label ? 'primary' : 'default'"
-              :plain="wz.dueLabel !== q.label" @click="pickDue(q)">{{ q.label }}</van-button>
-            <van-button size="small" round plain @click="openPicker">自定义…</van-button>
+          <h3 class="wz-h">什么时候做到？</h3>
+          <p class="wz-sub">到时间还没完成就算输，押多少扣多少。</p>
+          <div class="rt-chiprow">
+            <button v-for="q in quickDues" :key="q.label" class="rbtn"
+              :class="{ 'rbtn-primary': wz.dueLabel === q.label }"
+              @click="pickDue(q)">{{ q.label }}</button>
+            <button class="rbtn" @click="openPicker()">自定义…</button>
           </div>
-          <van-cell-group inset>
-            <van-cell title="死线" :value="wzDueText" is-link @click="openPicker" />
-          </van-cell-group>
-          <van-cell-group inset title="押注档位">
-            <div class="segline segline-pad">
-              <van-button :type="wz.tier === 'low' ? 'primary' : 'default'"
-                :plain="wz.tier !== 'low'" @click="wz.tier = 'low'">低 5</van-button>
-              <van-button :type="wz.tier === 'mid' ? 'primary' : 'default'"
-                :plain="wz.tier !== 'mid'" @click="wz.tier = 'mid'">中 10</van-button>
-              <van-button :type="wz.tier === 'high' ? 'primary' : 'default'"
-                :plain="wz.tier !== 'high'" @click="wz.tier = 'high'">高 20</van-button>
-              <van-button :type="wz.tier === 'allin' ? 'primary' : 'default'"
-                :plain="wz.tier !== 'allin'" @click="wz.tier = 'allin'">ALL IN</van-button>
+
+          <div class="rt-card rt-listpad" style="margin-bottom:16px">
+            <div class="rt-li rt-li-link" @click="openPicker()">
+              <span class="rt-li-main">死线</span>
+              <span class="rt-meta">{{ wzDueText }}</span>
+              <van-icon name="arrow" class="rt-meta" />
             </div>
-            <div class="legend2">赢了 +{{ wzStake }} / 输了 −{{ wzStake }} 活力值</div>
-          </van-cell-group>
+          </div>
+
+          <p class="rt-cap">押注档位</p>
+          <div class="rt-segline rt-segline-4">
+            <van-button :type="wz.tier === 'low' ? 'primary' : 'default'"
+              :plain="wz.tier !== 'low'" @click="wz.tier = 'low'">低 5</van-button>
+            <van-button :type="wz.tier === 'mid' ? 'primary' : 'default'"
+              :plain="wz.tier !== 'mid'" @click="wz.tier = 'mid'">中 10</van-button>
+            <van-button :type="wz.tier === 'high' ? 'primary' : 'default'"
+              :plain="wz.tier !== 'high'" @click="wz.tier = 'high'">高 20</van-button>
+            <van-button :type="wz.tier === 'allin' ? 'primary' : 'default'"
+              :plain="wz.tier !== 'allin'" @click="wz.tier = 'allin'">ALL IN</van-button>
+          </div>
+          <p class="rt-legend">赢了 +{{ wzStake }} / 输了 −{{ wzStake }} 活力值</p>
         </template>
 
         <!-- ③ 奖励 -->
         <template v-else-if="wz.step === 3">
-          <h3 class="wz-h">做到了，奖励是什么？</h3>
-          <p class="wz-sub">从愿望单挑一个 —— 达成那一刻就算兑现；也可以临时写一句。</p>
-          <div class="segline">
-            <van-button :type="wz.rewardFrom === 'wish' ? 'primary' : 'default'"
-              :plain="wz.rewardFrom !== 'wish'" @click="wz.rewardFrom = 'wish'">从愿望挑</van-button>
-            <van-button :type="wz.rewardFrom === 'free' ? 'primary' : 'default'"
-              :plain="wz.rewardFrom !== 'free'" @click="wz.rewardFrom = 'free'">写一句</van-button>
+          <h3 class="wz-h">做到了，奖励什么？</h3>
+          <p class="wz-sub">从愿望挑，或者自己写一句。</p>
+          <div class="rt-seg" style="margin-bottom:12px">
+            <button class="rt-segbtn" :class="{ active: wz.rewardFrom === 'wish' }"
+              @click="wz.rewardFrom = 'wish'">
+              <span>从愿望挑</span>
+              <span class="rt-meta">{{ pickableWishes.length }} 个可挑</span>
+            </button>
+            <button class="rt-segbtn" :class="{ active: wz.rewardFrom === 'free' }"
+              @click="wz.rewardFrom = 'free'">
+              <span>写一句</span>
+              <span class="rt-meta">临时起意</span>
+            </button>
           </div>
+
           <van-radio-group v-if="wz.rewardFrom === 'wish'" v-model="wz.rewardPick">
-            <van-cell-group v-if="pickableWishes.length" inset>
-              <van-cell v-for="w in pickableWishes" :key="w.id" :title="w.content" clickable
-                @click="wz.rewardPick = w.id">
-                <template #right-icon><van-radio :name="w.id" /></template>
-              </van-cell>
-            </van-cell-group>
-            <van-empty v-else description="愿望单是空的 —— 切到「写一句」吧" />
+            <div class="rt-card rt-listpad">
+              <div v-for="w in pickableWishes" :key="w.id" class="rt-li" @click="wz.rewardPick = w.id">
+                <span class="rt-li-ic"><van-radio :name="w.id" /></span>
+                <div class="rt-li-2"><div class="rt-li-2-t">{{ w.content }}</div></div>
+              </div>
+              <div v-if="!pickableWishes.length" class="rt-li">
+                <span class="rt-meta">没有可挑的愿望</span>
+              </div>
+            </div>
           </van-radio-group>
-          <van-cell-group v-else inset>
-            <van-field v-model="wz.reward" label="奖励" placeholder="比如：看一场电影" />
-          </van-cell-group>
+
+          <div v-else class="rt-card rt-listpad">
+            <van-field v-model="wz.reward" label="奖励" placeholder="想做什么" />
+          </div>
         </template>
 
         <!-- ④ 惩罚 -->
         <template v-else-if="wz.step === 4">
-          <h3 class="wz-h">做不到，罚自己什么？</h3>
-          <p class="wz-sub">写一句就好，也可以留空 —— 系统的处理是固定的。</p>
-          <van-cell-group inset>
+          <h3 class="wz-h">做不到，罚什么？</h3>
+          <p class="wz-sub">写一句，也可以留空。</p>
+          <div class="rt-card rt-listpad">
             <van-field v-model="wz.penalty" label="惩罚" placeholder="比如：手洗羽绒服" />
-          </van-cell-group>
-          <van-notice-bar wrapable :scrollable="false" left-icon="info-o"
-            :text="'做不到会：扣 ' + wzStake + ' 活力值' + (wz.source === 'todo' ? '，并退回待办（次数不动）' : '') + '，目标关闭。没有第二阶段，也没有补做。'" />
+          </div>
+          <p class="rt-legend">
+            做不到：扣 {{ wzStake }} 活力值{{
+              wz.source === 'todo' ? '，退回待办' : ''
+            }}，目标关闭。
+          </p>
         </template>
 
         <!-- ⑤ 怎么做 -->
         <template v-else-if="wz.step === 5">
-          <h3 class="wz-h">具体怎么做？</h3>
-          <p class="wz-sub">像手机笔记那样写：步骤、清单、想法都行，支持 Markdown，之后随时补。</p>
-          <van-cell-group inset>
+          <h3 class="wz-h">怎么做？</h3>
+          <p class="wz-sub">步骤、清单、想法都行，之后随时补。</p>
+          <div class="rt-card rt-listpad">
             <van-field v-model="wz.exec" type="textarea" autosize :rows="8" placeholder="第一步……" />
-          </van-cell-group>
+          </div>
         </template>
 
         <!-- ⑥ 确认 -->
         <template v-else>
-          <h3 class="wz-h">最后看一眼</h3>
-          <p class="wz-sub">确认后就不能改了 —— 到点见分晓。</p>
-          <van-cell-group inset>
-            <van-cell title="目标" :value="wzTitle" />
-            <van-cell title="死线" :value="wzDueText" />
-            <van-cell title="押注" :value="wzTierLabel + ' · 输赢 ' + wzStake + ' 分'" />
-            <van-cell title="奖励" :value="wzReward || '（没写）'" />
-            <van-cell title="惩罚" :value="wz.penalty || '（没写）'" />
-            <van-cell title="怎么做"
-              :value="wz.exec.trim() ? '已写 ' + wz.exec.trim().length + ' 字' : '（还没写，立完再写也行）'" />
-          </van-cell-group>
-          <van-notice-bar wrapable :scrollable="false" left-icon="info-o"
-            :text="'做到：+' + wzStake + ' 活力值，奖励当场兑现。做不到：−' + wzStake + ' 活力值' + (wz.source === 'todo' ? '，退回待办' : '') + '，目标关闭。'" />
+          <h3 class="wz-h">确认一下</h3>
+          <p class="wz-sub">设立后不能改。</p>
+          <div class="rt-card rt-listpad">
+            <div class="rt-li">
+              <span class="rt-li-main">目标</span>
+              <span class="rt-meta" style="max-width:60%">{{ wzTitle }}</span>
+            </div>
+            <div class="rt-li">
+              <span class="rt-li-main">死线</span>
+              <span class="rt-meta">{{ wzDueText }}</span>
+            </div>
+            <div class="rt-li">
+              <span class="rt-li-main">押注</span>
+              <span class="rt-meta">{{ wzTierLabel }} · 输赢 {{ wzStake }} 分</span>
+            </div>
+            <div class="rt-li">
+              <span class="rt-li-main">奖励</span>
+              <span class="rt-meta" style="max-width:60%">{{ wzReward || '（没写）' }}</span>
+            </div>
+            <div class="rt-li">
+              <span class="rt-li-main">惩罚</span>
+              <span class="rt-meta" style="max-width:60%">{{ wz.penalty || '（没写）' }}</span>
+            </div>
+            <div class="rt-li">
+              <span class="rt-li-main">怎么做</span>
+              <span class="rt-meta">
+                {{ wz.exec.trim() ? '已写 ' + wz.exec.trim().length + ' 字' : '还没写' }}
+              </span>
+            </div>
+          </div>
+          <p class="rt-legend">
+            做到：+{{ wzStake }} 活力值，奖励兑现。做不到：−{{ wzStake }} 活力值{{
+              wz.source === 'todo' ? '，退回待办' : ''
+            }}。
+          </p>
         </template>
       </div>
-      <div class="foot">
-        <van-button block plain :disabled="wz.step === 1" @click="step(-1)">上一步</van-button>
-        <van-button block type="primary" :disabled="!wzValid" @click="next">
+
+      <div class="rt-page-foot">
+        <button class="rbtn" :disabled="wz.step === 1" @click="step(-1)">上一步</button>
+        <button class="rbtn-primary" :disabled="!wzValid" @click="next()">
           {{ wz.step === 6 ? '押注设立' : '继续' }}
-        </van-button>
+        </button>
       </div>
     </div>
   </van-popup>
