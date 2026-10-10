@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { askGiveUp, finishGoal, goals, saveExec } from '../lib/store'
+import {
+  askGiveUp, busy, canCheckInToday, checkIn, finishGoal, goals, isCheckGoal, saveExec,
+} from '../lib/store'
 import { TIER_LABEL } from '../lib/game'
 import { fmtLeft } from '../lib/format'
 
@@ -85,6 +87,21 @@ onUnmounted(() => void flush())
           <span>· 押 {{ TIER_LABEL[goal.tier] }} {{ goal.stake }}</span>
         </div>
 
+        <!-- 打卡型目标：进度 + 打卡。打满由库里自动结算，不需要再点完成 -->
+        <div v-if="isCheckGoal(goal)" class="rt-card rt-checkcard rt-gap12">
+          <div class="rt-checkrow">
+            <span class="rt-batt">
+              <i v-for="n in goal.check_total" :key="n" :class="{ on: n <= goal.check_done }"></i>
+            </span>
+            <span class="rt-meta">{{ goal.check_done }} / {{ goal.check_total }}</span>
+            <button class="rbtn rbtn-soft rt-push" :disabled="busy || !canCheckInToday(goal)"
+              @click="checkIn(goal)">
+              {{ canCheckInToday(goal) ? '打卡' : '今日已打' }}
+            </button>
+          </div>
+          <p class="rt-legend" style="margin-top:8px">打满即自动结算。到死线没打满，照旧判负。</p>
+        </div>
+
         <div class="rt-panel rt-panel-warm rt-gap12">
           <div class="rt-panel-head">
             <van-icon name="gift-o" />做到了 · 奖励
@@ -113,7 +130,10 @@ onUnmounted(() => void flush())
       <!-- 放弃已经移到顶栏了，这条底栏只剩「完成」——
            用 solo 变体居中，不然它会缩在 1fr 那一列里靠左 -->
       <div class="rt-page-foot rt-page-foot-solo">
-        <button class="rbtn-primary" @click="doComplete()">完成</button>
+        <!-- 打卡型没有「完成」可点：它只有一个达成条件 —— 打满，
+             而打满那一刻库里会自动结算。摆一个点不动的按钮只会让人猜。 -->
+        <button v-if="!isCheckGoal(goal)" class="rbtn-primary" @click="doComplete()">完成</button>
+        <span v-else class="rt-meta">打满就自动结算，不用点完成</span>
       </div>
     </div>
   </van-popup>

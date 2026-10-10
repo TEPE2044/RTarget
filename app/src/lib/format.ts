@@ -48,3 +48,31 @@ export function fmtDue(at: number | string | Date): string {
 
 /** 'YYYY-MM-DDTHH:mm' → Date（本地时区），给 datetime-local / 选择器用 */
 export function pad2n(n: number) { return pad2(n) }
+
+/**
+ * 某个时刻落在北京时区的哪一天（'YYYY-MM-DD'）。
+ *
+ * 库里的 check_in_goal 用的是 (now() at time zone 'Asia/Shanghai')::date，
+ * 这里必须同一个口径 —— 用本地时区的话，手机时区一变（或跨时区用），
+ * 界面就会跟库里的判断对不上：显示"今天打过"但其实还能打，反之亦然。
+ */
+export function bjDay(at: number | string | Date): string {
+  const t = new Date(new Date(at).getTime() + 8 * 3600e3)
+  return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`
+}
+
+export function bjToday(): string { return bjDay(Date.now()) }
+
+/**
+ * 从此刻到某个时刻，**还能打几次**卡（一天最多一次）。
+ *
+ * 所以"分次打卡"的天数下限是硬的：打 30 次至少要跨 30 个北京日。
+ * 死线设在明天却要打 30 次，那个目标从设立那一刻就不可能达成 ——
+ * 向导里靠这个数把它挡掉，别让人白押一笔。
+ */
+export function checkInSlots(dueAt: number | string | Date): number {
+  const days = Math.round(
+    (Date.parse(bjDay(dueAt)) - Date.parse(bjToday())) / 86400e3
+  )
+  return days + 1 // 今天本来就能打一次
+}

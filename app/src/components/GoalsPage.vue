@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import {
   activeArchive, activeArchiveId, activeGoals, archiveHasPending, askSeal,
-  booted, busy, openArchives,
+  booted, busy, canCheckInToday, checkIn, isCheckGoal, openArchives,
 } from '../lib/store'
 import { TIER_LABEL } from '../lib/game'
 import { fmtLeft } from '../lib/format'
@@ -57,6 +57,17 @@ function switchArchive(id: string) {
         <span>{{ fmtLeft(g.due_at) }}</span>
         <span>· 押 {{ TIER_LABEL[g.tier] }} {{ g.stake }}</span>
       </p>
+      <!-- 打卡型目标：进度条 + 打卡。放在卡片里，逐日打卡才是一下的事 -->
+      <div v-if="isCheckGoal(g)" class="rt-checkrow" @click.stop>
+        <span class="rt-batt">
+          <i v-for="n in g.check_total" :key="n" :class="{ on: n <= g.check_done }"></i>
+        </span>
+        <span class="rt-meta">{{ g.check_done }} / {{ g.check_total }}</span>
+        <button class="rbtn rbtn-soft rt-push" :disabled="busy || !canCheckInToday(g)"
+          @click="checkIn(g)">
+          {{ canCheckInToday(g) ? '打卡' : '今日已打' }}
+        </button>
+      </div>
       <div class="rt-duo">
         <span class="rt-slug rt-slug-warm">
           <van-icon name="gift-o" />

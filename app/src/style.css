@@ -815,6 +815,21 @@ body {
 .rt-batt i { width: 8px; height: 8px; border-radius: 2px; background: var(--rt-batt-off); }
 .rt-batt i.on { background: var(--rt-tx); }
 .rt-batt-tx { font-size: 12px; color: var(--rt-tx3); font-variant-numeric: tabular-nums; }
+
+/* ---------- 打卡型目标：进度格 + 打卡（目标卡与详情共用） ---------- */
+.rt-checkrow { display: flex; align-items: center; gap: 10px; }
+/* 格子多的时候必须能压窄：30 格 × 11px = 330px，直接顶破手机宽度。
+   做法是让格子平分剩余宽度、但封顶 8px —— 少的时候还是小方块，
+   多的时候自动缩到 2px 也排得下（30×4.6 + 29×2 ≈ 196px）。 */
+.rt-checkrow .rt-batt { display: flex; gap: 2px; flex: 1 1 0; min-width: 0; }
+.rt-checkrow .rt-batt i { flex: 1 1 0; min-width: 2px; max-width: 8px; }
+.rt-checkrow .rt-meta { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rt-checkcard { padding: 12px 16px; }
+/* 次数比天数还多 —— 这个目标永远打不满，得用警示色说清。
+   写成两段选择器而不是单类：`.rt-legend` 在后面声明，同为单类时后声明的赢，
+   单写 `.rt-legend-bad` 会被它的 color 吃掉（实测计算值仍是灰的）。
+   两段选择器特异性更高，跟声明顺序无关。 */
+.rt-legend.rt-legend-bad { color: var(--rt-red); }
 /* 待办的内容：一道竖线当引用，跟标题分开 */
 .rt-quote { margin: 5px 0 0; padding-left: 8px; border-left: 2px solid var(--rt-line); }
 .rt-li-2 .rt-quote {

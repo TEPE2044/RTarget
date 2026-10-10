@@ -5,7 +5,7 @@ import {
 } from '../lib/store'
 import { TIER_LABEL } from '../lib/game'
 import type { Tier } from '../lib/game'
-import { fmtDue, pad2n } from '../lib/format'
+import { checkInSlots, fmtDue, pad2n } from '../lib/format'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{
@@ -28,6 +28,8 @@ const wz = reactive({
   pickerDate: [] as string[],
   pickerTime: [] as string[],
   tier: 'low' as Tier,
+  /** 打卡型目标的总格数；null = 一次做完 */
+  checkTotal: null as number | null,
   rewardFrom: 'free' as RewardFrom,
   rewardPick: null as string | null,
   reward: '',
@@ -52,6 +54,7 @@ function reset() {
   wz.pickerShow = false
   wz.pickerMode = 'date'
   wz.tier = 'low'
+  wz.checkTotal = null
   wz.rewardFrom = 'free'
   wz.rewardPick = null
   wz.reward = ''
@@ -101,6 +104,29 @@ const maxDate = new Date(Date.now() + 365 * 86400e3)
 
 const wzStake = computed(() => previewStake(wz.tier))
 const wzTierLabel = computed(() => TIER_LABEL[wz.tier])
+
+/** 从此刻到死线还能打几次卡（一天最多一次）—— 打卡次数的硬上限 */
+const wzMaxChecks = computed(() => checkInSlots(wz.dueAt))
+/** 次数要得比天数还多，这个目标永远打不满，挡在第 2 步 */
+const wzChecksFeasible = computed(
+  () => wz.checkTotal === null || wz.checkTotal <= wzMaxChecks.value
+)
+
+/**
+ * 切到「分次打卡」。
+ *
+ * 顺手把死线拉长：默认死线是"明天此刻"，那个上限只有 2 次，
+ * 一进去就是不可能达成的目标。取"当前死线"和"默认 30 天"里更远的那个，
+ * 用户之后想改还是能改。
+ */
+function pickCheckMode() {
+  if (wz.checkTotal === null) wz.checkTotal = 30
+  const need = Date.now() + wz.checkTotal * 86400e3
+  if (wz.dueAt < need) {
+    wz.dueAt = need
+    wz.dueLabel = '自定义'
+  }
+}
 /** 第 1 步：目标必须有（挑一条待办，或者自己写一句） */
 const wzValid = computed(() => (wz.source === 'todo' ? !!wz.pickId : !!wz.title.trim()))
 
@@ -114,9 +140,10 @@ const wzValid = computed(() => (wz.source === 'todo' ? !!wz.pickId : !!wz.title.
 const canNext = computed(() => {
   switch (wz.step) {
     case 1: return wzValid.value
+    case 2: return wzChecksFeasible.value
     case 3: return wz.rewardFrom === 'wish' ? !!wz.rewardPick : !!wz.reward.trim()
     case 4: return !!wz.penalty.trim()
-    default: return true // 第 2 步死线有默认值；第 5 步执行区可后补；第 6 步只是确认
+    default: return true // 第 5 步执行区可后补；第 6 步只是确认
   }
 })
 const wzTitle = computed(() =>
@@ -181,6 +208,7 @@ async function submit() {
       penalty: wz.penalty.trim(),
       exec: wz.exec,
       todoId: wz.source === 'todo' ? wz.pickId : null,
+      checkTotal: wz.checkTotal,
     })
     emit('update:show', false)
     emit('done')
@@ -248,10 +276,46 @@ function cancel() {
           </div>
         </template>
 
-        <!-- ② 死线 + 押注 -->
+        <!-- ② 死线 + 押注 + 打卡 -->
         <template v-else-if="wz.step === 2">
           <h3 class="wz-h">什么时候做到？</h3>
           <p class="wz-sub">到时间还没完成就算输，押多少扣多少。</p>
+
+          <!-- 一次性还是长期打卡。做成分段选择而不是另开一种目标类型：
+               库里也只是 check_total 有没有值，结算规则完全一样 -->
+          <div class="rt-seg" style="margin-bottom:14px">
+            <button class="rt-segbtn" :class="{ active: wz.checkTotal === null }"
+              @click="wz.checkTotal = null">
+              <span>一次做完</span>
+              <span class="rt-meta">到死线见分晓</span>
+            </button>
+            <button class="rt-segbtn" :class="{ active: wz.checkTotal !== null }"
+              @click="pickCheckMode()">
+              <span>分次打卡</span>
+              <span class="rt-meta">长期目标</span>
+            </button>
+          </div>
+
+          <template v-if="wz.checkTotal !== null">
+            <div class="rt-card rt-listpad" style="margin-bottom:14px">
+              <van-field label="打满几次">
+                <template #input>
+                  <van-stepper v-model="wz.checkTotal" :min="1" :max="365" integer />
+                  <span class="rt-meta" style="margin-left:10px">每天最多打一次</span>
+                </template>
+              </van-field>
+            </div>
+            <p class="rt-legend" :class="{ 'rt-legend-bad': !wzChecksFeasible }"
+              style="margin-bottom:14px">
+              <template v-if="wzChecksFeasible">
+                打满 {{ wz.checkTotal }} 次就自动结算，不用再点完成；到死线没打满照旧判负。
+              </template>
+              <template v-else>
+                死线太近了：到那天最多只能打 {{ wzMaxChecks }} 次，把期限往后挪，或者把次数调小。
+              </template>
+            </p>
+          </template>
+
           <div class="rt-chiprow">
             <button v-for="q in quickDues" :key="q.label" class="rbtn"
               :class="{ 'rbtn-primary': wz.dueLabel === q.label }"
@@ -261,7 +325,7 @@ function cancel() {
 
           <div class="rt-card rt-listpad" style="margin-bottom:16px">
             <div class="rt-li rt-li-link" @click="openPicker()">
-              <span class="rt-li-main">死线</span>
+              <span class="rt-li-main">{{ wz.checkTotal === null ? '死线' : '最后期限' }}</span>
               <span class="rt-meta">{{ wzDueText }}</span>
               <van-icon name="arrow" class="rt-meta" />
             </div>
@@ -354,6 +418,10 @@ function cancel() {
             <div class="rt-li">
               <span class="rt-li-main">押注</span>
               <span class="rt-meta">{{ wzTierLabel }} · 输赢 {{ wzStake }} 分</span>
+            </div>
+            <div v-if="wz.checkTotal !== null" class="rt-li">
+              <span class="rt-li-main">打卡</span>
+              <span class="rt-meta">打满 {{ wz.checkTotal }} 次 · 每天一次</span>
             </div>
             <div class="rt-li">
               <span class="rt-li-main">奖励</span>

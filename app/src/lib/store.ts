@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import {
-  completeGoal as apiCompleteGoal, createArchive, createGoal as apiCreateGoal, createTodo,
+  checkInGoal as apiCheckInGoal, completeGoal as apiCompleteGoal, createArchive,
+  createGoal as apiCreateGoal, createTodo,
   createWish, deleteArchive, deleteTodo, deleteWish, getRecentRecords, giveUpGoal as apiGiveUpGoal,
   getArchives, getGoals, getRecords, getTodos, getVitality, getWishes, reopenTodo, reopenWish,
   sealArchive as apiSealArchive, setTodoDone, setTodoTimesLeft, setWishDone, settleAll, stakeOf,
@@ -9,6 +10,7 @@ import {
 } from './game'
 import type { Archive, Goal, RecordItem, Tier, Todo, Wish } from './game'
 import { friendlyError, isAuthError, isClockSkewError, isNetworkError } from './auth'
+import { bjToday } from './format'
 
 /**
  * 全局状态 + 动作（单例组合式）。
@@ -74,6 +76,29 @@ export const pickableWishes = computed(
 
 export function archiveHasPending(id: string): boolean {
   return goals.value.some((g) => g.archive_id === id && g.status === 'active')
+}
+
+/**
+ * 是不是打卡型目标。
+ *
+ * **必须用 typeof 判，不能写 `check_total !== null`** —— 0022 迁移还没在库上跑时，
+ * 这一列取回来是 `undefined`，而 `undefined !== null` 是 true，
+ * 结果所有普通目标都会被当成打卡型，卡片上冒出一排空格子。
+ */
+export function isCheckGoal(g: Goal): boolean {
+  return typeof g.check_total === 'number'
+}
+
+/**
+ * 打卡型目标今天还能不能打。
+ *
+ * 只管界面置灰，**真判定在库里的 check_in_goal** —— 两处都判会迟早不一致，
+ * 但完全不判又会让用户对着一个按不动的按钮猜原因，所以这边只做"看起来对不对"。
+ */
+export function canCheckInToday(g: Goal): boolean {
+  if (!isCheckGoal(g) || g.status !== 'active') return false
+  if ((g.check_done ?? 0) >= (g.check_total ?? 0)) return false
+  return g.last_check_on !== bjToday()
 }
 
 // ---------- 错误上报 ----------
@@ -272,6 +297,8 @@ export async function addGoal(input: {
   penalty: string
   exec?: string
   todoId?: string | null
+  /** 打卡型目标的总格数；不传 = 普通的一次性目标 */
+  checkTotal?: number | null
 }) {
   if (!activeArchiveId.value) throw new Error('先开一个档')
   const goal = await apiCreateGoal({
@@ -294,6 +321,34 @@ export async function finishGoal(goal: Goal) {
     await refresh()
   } catch (e) {
     await reportError(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+/**
+ * 打一次卡。
+ *
+ * 判定（一天一次 / 上限 / 过死线）全在库里的 check_in_goal，这边只报结果：
+ * 它返回 completed = true 说明这是最后一格、库里已经当场结算过了，所以拉一次全量。
+ */
+export async function checkIn(goal: Goal) {
+  busy.value = true
+  try {
+    const r = await apiCheckInGoal(goal.id)
+    // 先就地更新，让格子立刻动起来；后面 refresh 会拿库里的真值覆盖
+    goal.check_done = r.done
+    goal.last_check_on = bjToday()
+    showToast(`已打卡 ${r.done} / ${r.total}`)
+    if (r.completed) {
+      showSuccessToast(`打满了 · +${goal.stake} 活力值`)
+      await refresh()
+    }
+  } catch (e) {
+    // 「今天已经打过卡了」这类是正常的业务拒绝，不是网络/权限问题，用黄条提示
+    const msg = friendlyError(e)
+    if (/已经打|打满|结清|不是打卡/.test(msg)) showToast(msg)
+    else await reportError(e)
   } finally {
     busy.value = false
   }

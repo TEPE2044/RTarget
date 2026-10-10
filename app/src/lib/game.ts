@@ -33,6 +33,15 @@ export interface Goal {
   exec: string
   /** 目标来自待办时有值；自己写的为 null */
   todo_id: string | null
+  /**
+   * 打卡型目标：总共要打几次。**null = 普通的一次性目标**（现有目标全是 null）。
+   * 打满即自动结算；到死线没打满照旧判负。
+   */
+  check_total: number | null
+  /** 已打卡次数 */
+  check_done: number
+  /** 最后一次打卡的北京日期（'YYYY-MM-DD'）；一天只能打一次 */
+  last_check_on: string | null
   status: GoalStatus
   settled_at: string | null
   created_at: string
@@ -236,6 +245,8 @@ export async function createGoal(input: {
   penalty: string
   exec?: string
   todoId?: string | null
+  /** 打卡型目标的总格数；不传 = 普通的一次性目标 */
+  checkTotal?: number | null
 }): Promise<Goal> {
   const user = await requireUser()
   const stake = stakeOf(input.tier, input.vitality)
@@ -254,6 +265,7 @@ export async function createGoal(input: {
       penalty: input.penalty.trim(),
       exec: input.exec ?? '',
       todo_id: input.todoId ?? null,
+      check_total: input.checkTotal ?? null,
     })
     .select()
     .single()
@@ -304,6 +316,23 @@ export async function completeGoal(goalId: string): Promise<number> {
   const { data, error } = await supabase.rpc('complete_goal', { p_goal_id: goalId })
   if (error) throw error
   return Number(data)
+}
+
+/**
+ * 打卡一次（只有打卡型目标能打）。
+ *
+ * 一天只能打一次、上限 check_total、过了死线打不了 —— 这些判定全在库里，
+ * 客户端只负责显示，别在这边再判一遍（两处判定迟早会不一致）。
+ * 打满最后一格时库里会当场自动结算，completed 就是给这个时候的。
+ */
+export async function checkInGoal(
+  goalId: string,
+): Promise<{ done: number; total: number; completed: boolean }> {
+  await requireUser()
+  const { data, error } = await supabase.rpc('check_in_goal', { p_goal_id: goalId })
+  if (error) throw error
+  const r = data as { done: number; total: number; completed: boolean }
+  return { done: Number(r.done), total: Number(r.total), completed: r.completed === true }
 }
 
 /** 做不到（主动放弃，效果同到点判负）：扣分 + 退回待办（次数不动） */
