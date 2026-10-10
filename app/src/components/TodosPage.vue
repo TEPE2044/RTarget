@@ -133,7 +133,7 @@ async function save() {
              建完不再改（后端 updateTodo 也不管这一列），所以只在新建时给 -->
         <van-field v-if="!sheet.id" label="次数" placeholder="1">
           <template #input>
-            <van-stepper v-model="sheet.times" :min="1" :max="99" integer />
+            <van-stepper v-model="sheet.times" :min="1" :max="365" integer />
             <span class="rt-meta" style="margin-left:10px">
               {{ sheet.times > 1 ? `分 ${sheet.times} 次做完` : '一次性的' }}
             </span>

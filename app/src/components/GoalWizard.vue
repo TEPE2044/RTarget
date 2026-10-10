@@ -196,8 +196,9 @@ async function next() {
 }
 
 async function submit() {
-  // 库里没有非空约束，所以这道防线只在客户端 —— 三样都不能缺
-  if (!wzValid.value || !wzReward.value || !wz.penalty.trim()) return
+  // 库里没有非空约束，也没有"天数装得下次数"的约束，所以这两道防线只在客户端
+  // —— 三样都不能缺，打卡次数还得真的打得完
+  if (!wzValid.value || !wzReward.value || !wz.penalty.trim() || !wzChecksFeasible.value) return
   try {
     await addGoal({
       content: wzTitle.value,
