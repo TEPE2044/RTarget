@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
-  booted, historyArchiveId, loadingRecords, records, sealedArchives, selectHistory,
+  askDeleteArchive, booted, busy, historyArchiveId, loadingRecords, records, sealedArchives,
+  selectHistory,
 } from '../lib/store'
 import { fmtDayTime, fmtTime } from '../lib/format'
 
@@ -26,6 +27,14 @@ const ICONS: Record<string, string> = {
         <span class="pill" :class="a.sealed_free ? 'p-green' : 'p-red'">
           {{ a.sealed_free ? '免费' : '扣分' }}
         </span>
+        <button class="rt-iconbtn rt-iconbtn-sm rt-iconbtn-danger" :disabled="busy"
+          aria-label="删除存档" @click.stop="askDeleteArchive(a)">
+          <svg class="rt-ico" width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7h16M9.5 7V4.8h5V7M6.6 7l1 12.2h8.8L17.4 7" />
+            <path d="M10.4 10.6v5.6M13.6 10.6v5.6" />
+          </svg>
+        </button>
       </div>
 
       <p class="rt-cap rt-gap26">记录</p>

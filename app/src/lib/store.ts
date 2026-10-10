@@ -2,10 +2,10 @@ import { computed, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import {
   completeGoal as apiCompleteGoal, createArchive, createGoal as apiCreateGoal, createTodo,
-  createWish, deleteArchive, deleteTodo, getRecentRecords, giveUpGoal as apiGiveUpGoal,
+  createWish, deleteArchive, deleteTodo, deleteWish, getRecentRecords, giveUpGoal as apiGiveUpGoal,
   getArchives, getGoals, getRecords, getTodos, getVitality, getWishes, reopenTodo, reopenWish,
-  sealArchive as apiSealArchive, setTodoDone, setWishDone, settleAll, stakeOf, updateGoalExec,
-  updateTodo,
+  sealArchive as apiSealArchive, setTodoDone, setTodoTimesLeft, setWishDone, settleAll, stakeOf,
+  updateGoalExec, updateTodo, updateWish,
 } from './game'
 import type { Archive, Goal, RecordItem, Tier, Todo, Wish } from './game'
 import { friendlyError, isAuthError, isClockSkewError, isNetworkError } from './auth'
@@ -247,6 +247,20 @@ export async function removeArchive(a: Archive) {
   }
 }
 
+/**
+ * 删存档要确认，而且得说清"分数不变"。
+ * 删掉的只是存档和档内节点，活力值流水保留（只断开归属）——
+ * 不然「封档扣 10% → 删档」就成了刷分漏洞。
+ */
+export function askDeleteArchive(a: Archive) {
+  showConfirmDialog({
+    title: `删除存档「${a.name}」？`,
+    message: '存档和里面的目标都会删掉。活力值流水保留，所以分数不变。',
+    confirmButtonText: '删除',
+    confirmButtonColor: '#C0392B',
+  }).then(() => void removeArchive(a)).catch(() => {})
+}
+
 // ---------- 目标 ----------
 
 export async function addGoal(input: {
@@ -333,7 +347,13 @@ export function askSeal() {
 
 // ---------- 待办 ----------
 
-export async function saveTodo(input: { id?: string | null; title: string; text: string }) {
+export async function saveTodo(input: {
+  id?: string | null
+  title: string
+  text: string
+  /** 打算做几次。只在新建时生效 —— 跟 0.0.1 一样，建完不再改 */
+  times?: number
+}) {
   const title = input.title.trim()
   if (!title) throw new Error('先写个标题')
   if (input.id) {
@@ -341,7 +361,7 @@ export async function saveTodo(input: { id?: string | null; title: string; text:
     const hit = todos.value.find((t) => t.id === input.id)
     if (hit) { hit.content = title; hit.note = input.text.trim() }
   } else {
-    const t = await createTodo(title, input.text)
+    const t = await createTodo(title, input.text, input.times ?? 1)
     todos.value.unshift(t)
   }
 }
@@ -359,9 +379,45 @@ export async function removeTodo(id: string) {
   try {
     await deleteTodo(id)
     todos.value = todos.value.filter((t) => t.id !== id)
+    showToast('已删掉')
   } catch (e) {
     await reportError(e)
   }
+}
+
+/**
+ * 主动把次数减一格（次数待办行上的「−」）。
+ *
+ * 跟"目标完成时自动扣格"是两条路，但落点一样：都是 times_left−1，
+ * 减到 0 就整条用完、归入已完成。所以走同一个终态。
+ */
+export async function decTodoTimes(t: Todo) {
+  if (t.times_left <= 0) return
+  const left = t.times_left - 1
+  try {
+    await setTodoTimesLeft(t.id, left)
+    t.times_left = left
+    if (left === 0) {
+      await setTodoDone(t.id)
+      t.status = 'done'
+      t.done_at = new Date().toISOString()
+      showToast(`「${t.content}」用完了`)
+    } else {
+      showToast(`还剩 ${left} 次`)
+    }
+  } catch (e) {
+    await reportError(e)
+  }
+}
+
+/** 删待办要确认 —— 这条不可撤销，且文件里可能写了东西 */
+export function askDeleteTodo(t: Todo) {
+  showConfirmDialog({
+    title: '删掉这条待办？',
+    message: t.note ? '连里面的内容一起删掉。' : '',
+    confirmButtonText: '删除',
+    confirmButtonColor: '#C0392B',
+  }).then(() => void removeTodo(t.id)).catch(() => {})
 }
 
 // ---------- 愿望 ----------
@@ -374,8 +430,12 @@ export async function addWish(content: string) {
 
 export async function toggleWish(w: Wish) {
   try {
-    if (w.status === 'done') { await reopenWish(w.id); w.status = 'open'; w.done_at = null }
-    else {
+    if (w.status === 'done') {
+      await reopenWish(w.id)
+      w.status = 'open'
+      w.done_at = null
+      showToast('已放回愿望单')
+    } else {
       // 已挂给进行中目标的愿望不能提前兑现：否则那个目标达成时无处可兑
       // （setWishDone 带 status='open' 条件，会**静默地影响 0 行**）。见 docs/feedback.md 2026-09-28。
       const hooked = goals.value.find((g) => g.status === 'active' && g.reward_wish_id === w.id)
@@ -386,10 +446,49 @@ export async function toggleWish(w: Wish) {
       await setWishDone(w.id, activeArchiveId.value)
       w.status = 'done'
       w.done_at = new Date().toISOString()
+      showToast('已兑现')
     }
   } catch (e) {
     await reportError(e)
   }
+}
+
+/** 改愿望的文案。已经挂给目标的愿望也能改 —— 目标存的是文案快照，不受影响 */
+export async function saveWish(id: string, content: string) {
+  const c = content.trim()
+  if (!c) return
+  try {
+    await updateWish(id, c)
+    const hit = wishes.value.find((w) => w.id === id)
+    if (hit) hit.content = c
+  } catch (e) {
+    await reportError(e)
+  }
+}
+
+export async function removeWish(id: string) {
+  try {
+    await deleteWish(id)
+    wishes.value = wishes.value.filter((w) => w.id !== id)
+    showToast('已从愿望单删掉')
+  } catch (e) {
+    await reportError(e)
+  }
+}
+
+/** 被进行中目标挂走的愿望不许删 —— 删了那个目标达成时就无处可兑 */
+export function askDeleteWish(w: Wish) {
+  const hooked = goals.value.find((g) => g.status === 'active' && g.reward_wish_id === w.id)
+  if (hooked) {
+    showToast(`这个愿望已经挂给「${hooked.content}」了，等它出结果`)
+    return
+  }
+  showConfirmDialog({
+    title: '从愿望单删掉？',
+    message: '已经立过的目标不受影响。',
+    confirmButtonText: '删除',
+    confirmButtonColor: '#C0392B',
+  }).then(() => void removeWish(w.id)).catch(() => {})
 }
 
 // ---------- 小工具 ----------

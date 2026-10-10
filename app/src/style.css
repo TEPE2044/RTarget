@@ -167,8 +167,15 @@ body {
 }
 .rt-iconbtn:hover { background: var(--rt-hover); color: var(--rt-tx); }
 .rt-iconbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* 列表行右侧的动作按钮（完成 / 放回 / 删除）。
+   34px —— 跟顶栏图标按钮同一档，别再缩成 28px 的小方点，太小按不准。 */
+.rt-iconbtn-sm { flex: 0 0 34px; width: 34px; height: 34px; border-radius: 9px; }
+.rt-iconbtn-sm .rt-ico { width: 19px; height: 19px; }
 .rt-iconbtn-danger:hover { background: var(--rt-red-bg); color: var(--rt-red); }
 .rt-ico { display: block; }
+
+/* 行内图标按钮组：靠右，不换行 */
+.rt-li-act { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: 0 0 auto; }
 
 /* ---------- 内容区 ---------- */
 

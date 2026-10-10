@@ -101,7 +101,24 @@ const maxDate = new Date(Date.now() + 365 * 86400e3)
 
 const wzStake = computed(() => previewStake(wz.tier))
 const wzTierLabel = computed(() => TIER_LABEL[wz.tier])
+/** 第 1 步：目标必须有（挑一条待办，或者自己写一句） */
 const wzValid = computed(() => (wz.source === 'todo' ? !!wz.pickId : !!wz.title.trim()))
+
+/**
+ * 「继续」的放行条件，**逐步判定**。
+ *
+ * 第 3 步奖励、第 4 步惩罚都**不能为空**：这个机制的兑现是"做到给什么、
+ * 做不到罚什么"两头都要给出承诺，空着一头等于没立。
+ * （原先只有第 1 步有门槛，后面几步能空着过去，是漏的。）
+ */
+const canNext = computed(() => {
+  switch (wz.step) {
+    case 1: return wzValid.value
+    case 3: return wz.rewardFrom === 'wish' ? !!wz.rewardPick : !!wz.reward.trim()
+    case 4: return !!wz.penalty.trim()
+    default: return true // 第 2 步死线有默认值；第 5 步执行区可后补；第 6 步只是确认
+  }
+})
 const wzTitle = computed(() =>
   wz.source !== 'todo'
     ? wz.title.trim()
@@ -152,7 +169,8 @@ async function next() {
 }
 
 async function submit() {
-  if (!wzValid.value) return
+  // 库里没有非空约束，所以这道防线只在客户端 —— 三样都不能缺
+  if (!wzValid.value || !wzReward.value || !wz.penalty.trim()) return
   try {
     await addGoal({
       content: wzTitle.value,
@@ -266,7 +284,7 @@ function cancel() {
         <!-- ③ 奖励 -->
         <template v-else-if="wz.step === 3">
           <h3 class="wz-h">做到了，奖励什么？</h3>
-          <p class="wz-sub">从愿望挑，或者自己写一句。</p>
+          <p class="wz-sub">必须写。从愿望挑，或者自己写一句。</p>
           <div class="rt-seg" style="margin-bottom:12px">
             <button class="rt-segbtn" :class="{ active: wz.rewardFrom === 'wish' }"
               @click="wz.rewardFrom = 'wish'">
@@ -287,7 +305,7 @@ function cancel() {
                 <div class="rt-li-2"><div class="rt-li-2-t">{{ w.content }}</div></div>
               </div>
               <div v-if="!pickableWishes.length" class="rt-li">
-                <span class="rt-meta">没有可挑的愿望</span>
+                <span class="rt-meta">没有可挑的愿望，切到「写一句」</span>
               </div>
             </div>
           </van-radio-group>
@@ -300,7 +318,7 @@ function cancel() {
         <!-- ④ 惩罚 -->
         <template v-else-if="wz.step === 4">
           <h3 class="wz-h">做不到，罚什么？</h3>
-          <p class="wz-sub">写一句，也可以留空。</p>
+          <p class="wz-sub">必须写。两头都给出承诺，这事才算立住。</p>
           <div class="rt-card rt-listpad">
             <van-field v-model="wz.penalty" label="惩罚" placeholder="比如：手洗羽绒服" />
           </div>
@@ -362,7 +380,7 @@ function cancel() {
 
       <div class="rt-page-foot">
         <button class="rbtn" :disabled="wz.step === 1" @click="step(-1)">上一步</button>
-        <button class="rbtn-primary" :disabled="!wzValid" @click="next()">
+        <button class="rbtn-primary" :disabled="!canNext" @click="next()">
           {{ wz.step === 6 ? '押注设立' : '继续' }}
         </button>
       </div>

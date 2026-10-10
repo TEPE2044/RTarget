@@ -425,6 +425,24 @@ export async function setTodoDone(id: string) {
   if (error) throw error
 }
 
+/**
+ * 直接改写剩余格数。给「主动减一格」用。
+ *
+ * 不走 RPC：它只动 todos 自己一列，没有跨表副作用，也没有并发争抢
+ * （跟"目标完成时扣格"不同 —— 那个必须在 complete_goal 里跟结算同事务）。
+ * 表上还有 todos_times_chk（0 ≤ left ≤ total）兜底，越界会直接被库挡回来。
+ */
+export async function setTodoTimesLeft(id: string, left: number) {
+  await requireUser()
+  const n = Math.max(0, Math.round(left) || 0)
+  const { error } = await supabase
+    .from('todos')
+    .update({ times_left: n })
+    .eq('id', id)
+    .neq('status', 'taken') // 已立项的不动：它正挂在某个目标上，格子由那个目标结账
+  if (error) throw error
+}
+
 /** 把勾掉的放回待办 */
 export async function reopenTodo(id: string) {
   await requireUser()
