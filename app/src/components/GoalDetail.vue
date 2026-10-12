@@ -76,7 +76,10 @@ onUnmounted(() => void flush())
              **不是 width:100%** —— 写成 w-100，「放弃」会停在离左边 400px 的半空中。 -->
         <div class="flex-1 min-w-0 flex justify-between items-center">
           <span class="rt-sec">目标</span>
-          <button class="rbtn rbtn-danger" @click="askGiveUp(goal)">放弃</button>
+          <div class="btn-group">
+            <button class="rbtn rbtn-danger" @click="askGiveUp(goal)">放弃</button>
+            <button v-if="!isCheckGoal(goal)" class="rbtn-primary ml-2" @click="doComplete()">完成</button>
+          </div>
         </div>
       </div>
 
@@ -129,12 +132,12 @@ onUnmounted(() => void flush())
 
       <!-- 放弃已经移到顶栏了，这条底栏只剩「完成」——
            用 solo 变体居中，不然它会缩在 1fr 那一列里靠左 -->
-      <div class="rt-page-foot rt-page-foot-solo">
+      <!-- <div class="rt-page-foot rt-page-foot-solo"> -->
         <!-- 打卡型没有「完成」可点：它只有一个达成条件 —— 打满，
              而打满那一刻库里会自动结算。摆一个点不动的按钮只会让人猜。 -->
-        <button v-if="!isCheckGoal(goal)" class="rbtn-primary" @click="doComplete()">完成</button>
+        <!-- <button v-if="!isCheckGoal(goal)" class="rbtn-primary" @click="doComplete()">完成</button>
         <span v-else class="rt-meta">打满就自动结算，不用点完成</span>
-      </div>
+      </div> -->
     </div>
   </van-popup>
 </template>
