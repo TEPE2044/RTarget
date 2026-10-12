@@ -20,8 +20,9 @@ import WishesPage from './components/WishesPage.vue'
 import HistoryPage from './components/HistoryPage.vue'
 import GoalDetail from './components/GoalDetail.vue'
 import GoalWizard from './components/GoalWizard.vue'
+import { supabase } from './lib/supabase.ts'
 
-const { session, loading, signOut, forceSignOut, passwordPending, setPassword } = useAuth()
+const { session, loading, forceSignOut, passwordPending, setPassword } = useAuth()
 const { theme, toggleTheme } = useTheme()
 
 // 数据层出错要能把人踢回登录页 —— 把登出函数交进 store（见 store 的错误上报）
@@ -208,6 +209,13 @@ async function onChangePassword() {
   } finally {
     busy.value = false
   }
+}
+
+// ---------- 登出 ---------
+async function signOut() {
+  await supabase.auth.signOut()
+  showMore.value = false;
+  passwordPending.value = false
 }
 
 // ---------- 生命周期 ----------

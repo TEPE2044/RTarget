@@ -289,22 +289,21 @@ async function signInWithPassword(email: string, password: string) {
   if (error) throw error
 }
 
-async function signOut() {
-  await supabase.auth.signOut()
-  passwordPending.value = false
-}
+// async function signOut() {
+//   await supabase.auth.signOut()
+//   passwordPending.value = false
+// }
 
 export function useAuth() {
   return {
     session: readonly(session),
     loading: readonly(loading),
-    passwordPending: readonly(passwordPending),
     authError: readonly(authError),
+    passwordPending,
     sendCode,
     verifyCode,
     setPassword,
     signInWithPassword,
-    signOut,
     forceSignOut,
     validateSession,
   }
