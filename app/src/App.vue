@@ -131,6 +131,25 @@ const newPwd2 = ref('')
 function openMore() { showMore.value = true; void loadCurrentVersion() }
 function openGoal(id: string) { detailId.value = id; detailShow.value = true }
 
+/**
+ * 全屏浮层开着的时候，藏掉文档那条滚动条。
+ *
+ * 起因：浮层宽度是 100%，而 100% 是**不含滚动条那 15px** 的 —— 桌面浏览器上
+ * 浮层右边会露出文档滚动条的一条竖带。之前靠 Vant 的 lock-scroll 顺带把它藏住，
+ * 但 lock-scroll 会把滚动位置挪走还不还回来（实测 350 → 84），只能关掉它。
+ *
+ * 换成 html{overflow:hidden}（见 style.css 的 .rt-noscroll）：
+ * - 滚动条消失、条带没了 ✓
+ * - 顺便把背景滚动锁回来（浮层后面还能被滚本身就是个 bug）✓
+ * - 实测 scrollY 不会被重置，不像 Vant 那套会把位置弄丢 ✓
+ *
+ * 短抽屉不加这个：它们还留着 Vant 的 lock-scroll，滚动条本来就被藏住了。
+ */
+const fullOverlay = computed(() => showWizard.value || detailShow.value)
+watch(fullOverlay, (on) => {
+  document.documentElement.classList.toggle('rt-noscroll', on)
+})
+
 /** 开新档：名称必须自己填（自动叫「新档 3」那种名字，回头谁都认不出是哪个档） */
 function openArchive() { newArchiveName.value = ''; showArchive.value = true }
 

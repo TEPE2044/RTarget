@@ -818,6 +818,15 @@ body {
 .rt-slug-warm { background: var(--rt-warm-bg); color: var(--rt-warm); }
 .rt-slug-cold { background: var(--rt-cold-bg); color: var(--rt-cold); }
 
+/* 全屏浮层开着时挂在 html 上：藏掉文档滚动条。
+   两个作用：
+   1. 浮层宽度是 100%，而 100% 不含滚动条占的那 15px —— 不藏的话浮层右边会
+      露出文档滚动条的一条竖带（桌面浏览器上肉眼可见）。
+   2. 顺便锁住背景滚动：浮层盖住整屏时，后面那页还能被滚本身就是个 bug。
+   为什么不用 Vant 的 lock-scroll：它会把 window 的滚动位置挪到一个固定值还不还
+   回来（实测 350 → 84）。html 上的 overflow:hidden 实测能保住 scrollY。 */
+html.rt-noscroll { overflow: hidden; }
+
 /* ---------- 待办的「次数」（电量格）与「内容」 ---------- */
 .rt-batt { display: inline-flex; align-items: center; gap: 3px; }
 .rt-batt i { width: 8px; height: 8px; border-radius: 2px; background: var(--rt-batt-off); }
