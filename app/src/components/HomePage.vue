@@ -108,7 +108,7 @@ function onFeedClick(f: RecordItem) {
         </svg>
         打卡
         <span class="rt-meta rt-push">
-          {{ checkLeft ? `${checkLeft} 个未打卡` : '今天目标已完成' }}
+          {{ checkLeft ? `${checkLeft} 个目标未打卡` : '今天目标已完成' }}
         </span>
       </div>
       <div class="rt-card rt-listpad">
