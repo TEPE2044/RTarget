@@ -48,7 +48,7 @@ function switchArchive(id: string) {
     <!-- 目标卡：标题居中，奖励 / 惩罚等宽并排铺满 -->
     <div v-for="g in activeGoals" :key="g.id" class="rt-card rt-goal" @click="emit('goal', g.id)">
       <p class="rt-goal-t">{{ g.content }}</p>
-      <p class="rt-deadline">死线 {{ fmtDayTime(g.due_at) }}</p>
+      <p class="rt-deadline">{{ fmtDayTime(g.due_at) }} 结束</p>
       <p class="rt-goal-m">
         <svg class="rt-ico" width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
