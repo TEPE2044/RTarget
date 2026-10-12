@@ -789,6 +789,14 @@ body {
   font-size: 17px; font-weight: 600; line-height: 1.45;
   text-align: center;
 }
+/* 目标卡上的死线绝对值（几月几号几点）。
+   光有「剩 N 小时」看不出具体哪天到期，两行各司其职：这行给日期，下面那行给倒计时 */
+.rt-deadline {
+  margin: 0 0 6px;
+  text-align: center;
+  font-size: 12px; color: var(--rt-tx2);
+  font-variant-numeric: tabular-nums;
+}
 .rt-goal-m {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   flex-wrap: wrap;

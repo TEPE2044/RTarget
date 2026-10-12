@@ -4,7 +4,7 @@ import {
   askGiveUp, busy, canCheckInToday, checkIn, finishGoal, goals, isCheckGoal, saveExec,
 } from '../lib/store'
 import { TIER_LABEL } from '../lib/game'
-import { fmtLeft } from '../lib/format'
+import { fmtDayTime, fmtLeft } from '../lib/format'
 
 const props = defineProps<{ show: boolean; goalId: string | null }>()
 const emit = defineEmits<{ (e: 'update:show', v: boolean): void }>()
@@ -86,7 +86,8 @@ onUnmounted(() => void flush())
       <div class="rt-page-body">
         <h2 class="rt-detail-t">{{ goal.content }}</h2>
         <div class="rt-detail-m">
-          <span>{{ fmtLeft(goal.due_at) }}</span>
+          <span>死线 {{ fmtDayTime(goal.due_at) }}</span>
+          <span>· {{ fmtLeft(goal.due_at) }}</span>
           <span>· 押 {{ TIER_LABEL[goal.tier] }} {{ goal.stake }}</span>
         </div>
 
