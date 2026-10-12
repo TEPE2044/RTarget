@@ -69,7 +69,7 @@ function switchArchive(id: string) {
           {{ canCheckInToday(g) ? '打卡' : '今日已打' }}
         </button>
       </div>
-      <div class="rt-duo">
+      <div class="rt-duo mt-4">
         <span class="rt-slug rt-slug-warm">
           <van-icon name="gift-o" />
           <span class="rt-slug-t">奖励 · {{ g.reward || '没写' }}</span>
