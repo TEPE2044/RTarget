@@ -833,6 +833,13 @@ body {
 .rt-checkrow .rt-batt i { flex: 1 1 0; min-width: 2px; max-width: 8px; }
 .rt-checkrow .rt-meta { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rt-checkcard { padding: 12px 16px; }
+
+/* 首页快捷打卡：一行 = 目标名（上行）/ 电量格 + 进度（下行）/ 打卡按钮（右侧） */
+.rt-checkline { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+/* 格子多时要能压窄（同 .rt-checkrow 的理由）：30 格 × 11px 会顶破行宽。
+   这里不能给容器 flex-grow，否则格子少的那些行会被拉散、进度数字飘到右边 */
+.rt-checkline .rt-batt { flex: 0 1 auto; min-width: 0; gap: 2px; }
+.rt-checkline .rt-batt i { min-width: 2px; }
 /* 次数比天数还多 —— 这个目标永远打不满，得用警示色说清。
    写成两段选择器而不是单类：`.rt-legend` 在后面声明，同为单类时后声明的赢，
    单写 `.rt-legend-bad` 会被它的 color 吃掉（实测计算值仍是灰的）。

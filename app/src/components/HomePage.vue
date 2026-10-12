@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { booted, busy, feed, goals, vitality } from '../lib/store'
+import {
+  booted, busy, canCheckInToday, checkIn, feed, goals, isCheckGoal, vitality,
+} from '../lib/store'
 import type { Goal, RecordItem } from '../lib/game'
 import { fmtDayTime, fmtTime } from '../lib/format'
 
@@ -22,6 +24,29 @@ const overdue = computed(() =>
 const ICONS: Record<string, string> = {
   done: 'passed', failed: 'revoke', created: 'plus', sealed: 'lock',
 }
+
+/**
+ * 首页快捷打卡：进行中、还没打满、且还没到死线的打卡目标。
+ *
+ * 三样都排除掉才干净：
+ * - 打满的会自动结算 → 自动从这里消失，不用手动清
+ * - 过了死线的不能再打（check_in_goal 会挡），摆在首页只会是个按不动的按钮；
+ *   这种交给上面那条「过期」横幅去说
+ * - 非打卡目标（check_total 为 null）压根不该出现在这儿
+ */
+const checkGoals = computed(() =>
+  goals.value
+    .filter((g) =>
+      isCheckGoal(g) && g.status === 'active'
+      && (g.check_done ?? 0) < (g.check_total ?? 0)
+      && new Date(g.due_at).getTime() > Date.now()
+    )
+    // 今天还没打的排前面 —— 每天要动手的就是上面这几个
+    .sort((a, b) => Number(canCheckInToday(b)) - Number(canCheckInToday(a)))
+)
+
+/** 今天还剩几件没打。全打完时标题换成一句话，比显示 "0 件没打" 好听 */
+const checkLeft = computed(() => checkGoals.value.filter(canCheckInToday).length)
 
 /** 动态里提到的那条目标（点了就进详情） */
 function goalOf(f: RecordItem): Goal | undefined {
@@ -71,6 +96,43 @@ function onFeedClick(f: RecordItem) {
         押注 低 5 · 中 10 · 高 20 · ALL IN 八成
       </p>
     </div>
+
+    <!-- 快捷打卡：一个打卡目标都没有时整块不渲染（连标题都不占位）。
+         放在活力值下面、两个入口上面 —— 每天要动手的事优先于"新建" -->
+    <template v-if="checkGoals.length">
+      <div class="rt-cap rt-gap26">
+        <svg class="rt-ico" width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8.3" />
+          <path d="M8.2 12.3 11 15.1 15.9 9.3" />
+        </svg>
+        打卡
+        <span class="rt-meta rt-push">
+          {{ checkLeft ? `${checkLeft} 件没打` : '今天都打完了' }}
+        </span>
+      </div>
+      <div class="rt-card rt-listpad">
+        <!-- 整行可点进目标详情；按钮是行内唯一动作，所以 @click.stop -->
+        <div v-for="g in checkGoals" :key="g.id" class="rt-li rt-li-link"
+          :class="{ 'rt-done': !canCheckInToday(g) }" @click="emit('goal', g.id)">
+          <div class="rt-li-2">
+            <div class="rt-li-2-t">{{ g.content }}</div>
+            <div class="rt-checkline">
+              <span class="rt-batt">
+                <i v-for="n in g.check_total" :key="n" :class="{ on: n <= g.check_done }"></i>
+              </span>
+              <span class="rt-meta">{{ g.check_done }} / {{ g.check_total }}</span>
+            </div>
+          </div>
+          <span class="rt-li-act">
+            <button class="rbtn rbtn-soft" :disabled="busy || !canCheckInToday(g)"
+              @click.stop="checkIn(g)">
+              {{ canCheckInToday(g) ? '打卡' : '今日已打' }}
+            </button>
+          </span>
+        </div>
+      </div>
+    </template>
 
     <!-- 两个入口：都走"柔和款"，别在首页正中杵一块黑色实心砖 -->
     <div class="rt-quick">
