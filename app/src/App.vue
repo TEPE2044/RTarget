@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showFailToast, showLoadingToast, showSuccessToast, showToast } from 'vant'
 import { useAuth } from './lib/auth'
 import { onAppResume, registerBackButton, syncSystemBars } from './lib/native'
@@ -48,6 +48,50 @@ const PAGES: { key: PageKey; label: string }[] = [
   { key: 'wishes', label: '愿望' },
   { key: 'history', label: '历史' },
 ]
+
+/**
+ * 各 tab 的滚动位置（window 的，不是某个容器）。
+ *
+ * 为什么要有这东西：五页是 v-show 常驻的（见下面模板里的注释），滚的是 window。
+ * 切 tab 只换 display，**浏览器不会自己重置滚动位置** —— 于是"首页划到底、切目标、
+ * 目标也到底"。而一律强制回顶又是另一种错：切过去看一眼再切回来，位置没了。
+ *
+ * 所以按"导航栈"的口径分开处理：
+ * - 切 tab（横向移动）→ 恢复**那个 tab 自己**上次的位置，第一次进 = 顶部
+ * - 点当前所在的 tab → 回顶（原生手势惯例，也给一个"从头看"的入口）
+ * - 打开/关闭详情 → 什么都不用做：详情是全屏浮层，列表没被卸载，window 根本没动过
+ * - 登出重登 / 冷启动 → 内存清空，自然回首页 + 顶部（这是想要的）
+ */
+const scrollMem = new Map<PageKey, number>()
+
+/**
+ * 切页。
+ *
+ * - 用户点页签 → 恢复目标页上次的位置
+ * - top = true → 落到顶部。给"刚做完一个动作、要看到结果"的跳转用
+ *   （比如立完目标跳去目标页，用户是要看那张新卡，不是回到他上次翻到的地方）
+ *
+ * 为什么必须等 nextTick：v-show 换的是 display，**文档高度要等这一步 patch 完
+ * 才等于新页的高度**。在新高度生效前 scrollTo，超出部分会被浏览器截断到当时的
+ * 最大高度 —— 这正是"矮页面回来时被顶到底"的成因。等一帧再滚，恢复才是准的。
+ * （当然，目标页本身比首页矮时仍然只能停到它的最大高度，这是浏览器的硬限制。）
+ */
+function goPage(next: PageKey, opts: { top?: boolean } = {}) {
+  const cur = page.value
+
+  if (next === cur) {
+    // 点已经在的这页 = 回顶。存 0，免得下次切回来又跳回原来那个位置
+    scrollMem.set(cur, 0)
+    window.scrollTo(0, 0)
+    return
+  }
+
+  scrollMem.set(cur, window.scrollY)
+  page.value = next
+  const want = opts.top ? 0 : (scrollMem.get(next) ?? 0)
+  if (opts.top) scrollMem.set(next, 0)
+  void nextTick(() => window.scrollTo(0, want))
+}
 
 /** 还没了结的目标数 —— 挂在「目标」页签上。
     口径必须跟目标页看到的一致：只算**当前这个存档**的，
@@ -98,7 +142,7 @@ async function onCreateArchive() {
 }
 
 /** 向导立完目标：跳到目标页并把数据拉新（addGoal 自己只落库，不负责刷新） */
-function onWizardDone() { page.value = 'goals'; void refresh() }
+function onWizardDone() { goPage('goals', { top: true }); void refresh() }
 
 // ---------- 应用内更新（OTA，只更前端） ----------
 
@@ -257,7 +301,8 @@ onMounted(() => {
       detailShow.value = false
     },
     currentPage: () => page.value,
-    goHome: () => { page.value = 'home' },
+    // 跟点页签同一套逻辑，不然从安卓返回键回首页会漏掉滚动恢复
+    goHome: () => goPage('home'),
   })
 
   // 打开时自检一次；切回前台也再问一句（Android 上切回来不会重载 JS，
@@ -373,8 +418,8 @@ watch(session, (s) => {
            挂上去会被静默跳过：五页会同时渲染，页签看着就像"点了没反应"。 -->
       <div v-show="page === 'home'">
         <HomePage @wizard="showWizard = true"
-          @todo="page = 'todos'; todosPage?.openNew()" @goal="openGoal"
-          @goals="page = 'goals'" />
+          @todo="goPage('todos', { top: true }); todosPage?.openNew()" @goal="openGoal"
+          @goals="goPage('goals', { top: true })" />
       </div>
       <div v-show="page === 'todos'"><TodosPage ref="todosPage" /></div>
       <div v-show="page === 'goals'">
@@ -388,7 +433,7 @@ watch(session, (s) => {
     <nav class="rt-tabbar">
       <div class="rt-tabbar-inner">
         <button v-for="p in PAGES" :key="p.key" class="rt-tab"
-          :class="{ active: page === p.key }" @click="page = p.key">
+          :class="{ active: page === p.key }" @click="goPage(p.key)">
           <span class="rt-tab-ico">
             <svg v-if="p.key === 'home'" class="rt-ico" width="22" height="22" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">

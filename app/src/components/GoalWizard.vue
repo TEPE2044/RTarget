@@ -224,8 +224,12 @@ function cancel() {
 </script>
 
 <template>
+  <!-- lock-scroll=false：这是全屏浮层，背后根本看不见、没有"背景被滚"的问题，
+       而 Vant 锁背景滚动会把 window 的滚动位置挪走、关掉还不还回来
+       （实测：列表滚到 350，打开浮层变 84，关闭后仍停在 84 —— 位置就丢了） -->
   <van-popup :show="show" position="bottom" :style="{ height: '100%' }" :duration="0.25"
-    :close-on-click-overlay="false" @update:show="(v: boolean) => emit('update:show', v)">
+    :lock-scroll="false" :close-on-click-overlay="false"
+    @update:show="(v: boolean) => emit('update:show', v)">
     <div class="rt-page">
       <div class="rt-page-head">
         <button class="rt-iconbtn" aria-label="返回" @click="cancel()">

@@ -60,8 +60,12 @@ onUnmounted(() => void flush())
 </script>
 
 <template>
+  <!-- lock-scroll=false：全屏浮层，背后看不见，没有"背景被滚"的问题；
+       而 Vant 锁背景滚动会把 window 的滚动位置挪走、关掉不还回来 ——
+       实测列表滚到 350，打开详情变 84，关闭后仍停在 84，等于"看完详情位置丢了" -->
   <van-popup :show="show" position="right" :style="{ width: '100%', height: '100%' }" :duration="0.25"
-    :close-on-click-overlay="false" @update:show="(v: boolean) => emit('update:show', v)">
+    :lock-scroll="false" :close-on-click-overlay="false"
+    @update:show="(v: boolean) => emit('update:show', v)">
     <div v-if="goal" class="rt-page">
       <div class="rt-page-head">
         <button class="rt-iconbtn" aria-label="返回" @click="close()">
