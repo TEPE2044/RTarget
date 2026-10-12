@@ -45,7 +45,7 @@ const checkGoals = computed(() =>
     .sort((a, b) => Number(canCheckInToday(b)) - Number(canCheckInToday(a)))
 )
 
-/** 今天还剩几件没打。全打完时标题换成一句话，比显示 "0 件没打" 好听 */
+/** 今天还剩几个未打卡。全打完时标题换成一句话，比显示 "0 个未打卡" 好听 */
 const checkLeft = computed(() => checkGoals.value.filter(canCheckInToday).length)
 
 /** 动态里提到的那条目标（点了就进详情） */
@@ -108,7 +108,7 @@ function onFeedClick(f: RecordItem) {
         </svg>
         打卡
         <span class="rt-meta rt-push">
-          {{ checkLeft ? `${checkLeft} 件没打` : '今天都打完了' }}
+          {{ checkLeft ? `${checkLeft} 个未打卡` : '今天目标已完成' }}
         </span>
       </div>
       <div class="rt-card rt-listpad">
