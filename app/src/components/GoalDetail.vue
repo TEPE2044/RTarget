@@ -50,13 +50,38 @@ async function doComplete() {
   await finishGoal(g)
 }
 
-/** 目标结清了（放弃 / 到点判负）就顺手把这个浮层收掉，别停在一条已死的目标上 */
+/**
+ * 这条已经结清了（做到 / 判负 / 放弃）。
+ *
+ * 结清的目标也能打开看 —— 首页「最近」里点"完成了「X」"就是要回看它。
+ * 但这种时候没有动作可做，所以底部不给「完成」、顶栏不给「放弃」。
+ */
+const settled = computed(() => !!goal.value && goal.value.status !== 'active')
+
+/**
+ * 目标**在详情开着的时候**被结清了，就把浮层收掉 —— 别停在一条已经变死的目标上。
+ *
+ * 判据必须是"从 active 变成别的"，不能只看当前状态：
+ * watch 不带 immediate 也会在**依赖从无到有**时触发一次，于是回看一条已结清的目标时，
+ * 详情刚渲染就被这里关掉 —— 表现就是"点最近那条没进详情，只黑闪一下"
+ * （实测：弹窗 +7ms 出现、+250ms 被拆掉；那下黑闪就是遮罩 .van-overlay
+ * rgba(0,0,0,.55) 被拆时的残留，不是另一个问题）。
+ */
 watch(
   () => goal.value?.status,
-  (s) => { if (props.show && s && s !== 'active') emit('update:show', false) },
+  (s, prev) => {
+    if (prev === 'active' && s && s !== 'active' && props.show) emit('update:show', false)
+  },
 )
 
 onUnmounted(() => void flush())
+
+/** 底部那行结论：已结清时替掉「完成」（那按钮对已结清的目标只会报"这条已经结清了"） */
+const outcomeText = computed(() => {
+  const g = goal.value
+  if (!g || g.status === 'active') return ''
+  return g.status === 'done' ? `已完成 · +${g.stake} 活力值` : `已判负 · −${g.stake} 活力值`
+})
 </script>
 
 <template>
@@ -80,7 +105,10 @@ onUnmounted(() => void flush())
              **不是 width:100%** —— 写成 w-100，「放弃」会停在离左边 400px 的半空中。 -->
         <div class="flex-1 min-w-0 flex justify-between items-center">
           <span class="rt-sec">目标</span>
-          <div class="btn-group">
+          <!-- 已结清的回看态（首页「最近」点进来）没有动作可做，摆一个点了只会报
+               「这条已经结清了」的按钮没意义 —— 换成结论 -->
+          <span v-if="settled" class="rt-meta">{{ outcomeText }}</span>
+          <div v-else class="btn-group">
             <button class="rbtn rbtn-danger" @click="askGiveUp(goal)">放弃</button>
             <button v-if="!isCheckGoal(goal)" class="rbtn-primary ml-2" @click="doComplete()">完成</button>
           </div>
@@ -102,8 +130,9 @@ onUnmounted(() => void flush())
               <i v-for="n in goal.check_total" :key="n" :class="{ on: n <= goal.check_done }"></i>
             </span>
             <span class="rt-meta">{{ goal.check_done }} / {{ goal.check_total }}</span>
-            <button class="rbtn rbtn-soft rt-push" :disabled="busy || !canCheckInToday(goal)"
-              @click="checkIn(goal)">
+            <!-- 已结清的打卡目标只留进度，不给打卡按钮（库里会拒，摆着只会让人猜） -->
+            <button v-if="!settled" class="rbtn rbtn-soft rt-push"
+              :disabled="busy || !canCheckInToday(goal)" @click="checkIn(goal)">
               {{ canCheckInToday(goal) ? '打卡' : '今日已打' }}
             </button>
           </div>
