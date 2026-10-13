@@ -70,26 +70,7 @@ where r.goal_id is null
   and (select count(*) from goals g2 where g2.content = g.content) = 1;
 
 
--- ---------- 3. 补回缺的立项行 ----------
---
--- 立项行一度改成"不落库、由目标投影"，那批行被删掉了。既然现在统一走这张表，
--- 就用目标自己把缺的补回来（目标上有 created_at，时间不会错）。
--- 判重看"同档 + 同名 + 时间几乎相同"，比只看 goal_id 稳 ——
--- 上面 goal_id 回填失败的（重名）那些行也认得出来。
-
-insert into records(user_id, archive_id, type, goal_id, goal_content, amount, created_at)
-select g.user_id, g.archive_id, 'created', g.id, g.content, g.stake, g.created_at
-from goals g
-where not exists (
-  select 1 from records r
-  where r.type = 'created'
-    and r.archive_id = g.archive_id
-    and r.goal_content = g.content
-    and abs(extract(epoch from (r.created_at - g.created_at))) < 5
-);
-
-
--- ---------- 4. 四个写入处改成只写结构化字段 ----------
+-- ---------- 3. 四个写入处改成只写结构化字段 ----------
 --
 -- 顺序很重要：必须在 drop text 之前替换完，否则旧函数一被调用就会炸。
 
@@ -297,6 +278,28 @@ end $$;
 grant execute on function seal_archive(uuid) to authenticated;
 
 
--- ---------- 5. 最后才 drop text ----------
+-- ---------- 4. 最后才 drop text ----------
 
 alter table records drop column if exists text;
+
+
+-- ---------- 5. 补回缺的立项行 ----------
+--
+-- ⚠️ 这一段**必须在 drop text 之后**：text 原来是 not null，插入不带它就直接违反非空约束
+--    （第一版把它放在 drop 之前，报 23502 null value in column "text"）。
+--
+-- 立项行一度改成"不落库、由目标投影"，那批行被删掉了。既然现在统一走这张表，
+-- 就用目标自己把缺的补回来（目标上有 created_at，时间不会错）。
+-- 判重看"同档 + 同名 + 时间几乎相同"，比只看 goal_id 稳 ——
+-- 上面 goal_id 回填失败的（重名）那些行也认得出来。
+
+insert into records(user_id, archive_id, type, goal_id, goal_content, amount, created_at)
+select g.user_id, g.archive_id, 'created', g.id, g.content, g.stake, g.created_at
+from goals g
+where not exists (
+  select 1 from records r
+  where r.type = 'created'
+    and r.archive_id = g.archive_id
+    and r.goal_content = g.content
+    and abs(extract(epoch from (r.created_at - g.created_at))) < 5
+);
