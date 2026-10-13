@@ -110,13 +110,6 @@ export interface RecordItem {
    * sealed → 封档扣分（≤ 0），**0 表示全部完成、免费**
    */
   amount: number | null
-  /**
-   * ⚠️ 过渡字段：0023 迁移 drop 掉这一列之前它还在。
-   * 客户端在 `goal_content` 取不到时会退回显示这句原文（见 lib/records.ts），
-   * 免得迁移还没跑的那段时间界面上一堆"（已删除的目标）"。
-   * 0023 跑完确认没问题后，这个字段可以删。
-   */
-  text?: string
   created_at: string
 }
 

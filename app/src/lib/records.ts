@@ -23,12 +23,6 @@ import type { RecordItem } from './game'
  * 所以调用方从自己的 archives 列表里查一下传进来即可（见 store 的 recordLabel）。
  */
 export function recordText(r: RecordItem, archiveName = ''): string {
-  // ⚠️ 过渡兜底：0023 迁移还没跑的时候，goal_content / amount 这些列都还不存在，
-  //    而 text 列还在。这种情况下直接显示库里那句原文，免得界面上一堆
-  //    "（已删除的目标）"让人以为数据丢了。0023 跑完 text 列就没了，
-  //    这里自然走下面的模板分支 —— 确认过之后这一行和 RecordItem.text 可以一起删。
-  if (!r.goal_content && r.text) return r.text
-
   // 目标被删档清掉后 goal_content 就是唯一的名字来源；真没有就兜一句，别显示空白
   const name = r.goal_content || '（已删除的目标）'
   const n = r.amount ?? 0
