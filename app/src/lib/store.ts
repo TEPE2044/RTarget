@@ -10,6 +10,7 @@ import {
 } from './game'
 import type { Archive, Goal, RecordItem, Tier, Todo, Wish } from './game'
 import { friendlyError, isAuthError, isClockSkewError, isNetworkError } from './auth'
+import { mergeFeed } from './records'
 import { bjToday } from './format'
 
 /**
@@ -167,15 +168,17 @@ export async function refresh(opts: { silent?: boolean } = {}): Promise<void> {
 
 async function loadAll() {
   await settleAll() // 惰性结算：把到点的账先结掉
+  // 动态多取一些：里面的立项行会被丢掉、改用目标投影补上（见 lib/records.ts），
+  // 只取 20 条的话过滤完就不够 20 条了
   const [v, as, gs, ts, ws, fd] = await Promise.all([
-    getVitality(), getArchives(), getGoals(), getTodos(), getWishes(), getRecentRecords(20),
+    getVitality(), getArchives(), getGoals(), getTodos(), getWishes(), getRecentRecords(40),
   ])
   vitality.value = v
   archives.value = as
   goals.value = gs
   todos.value = ts
   wishes.value = ws
-  feed.value = fd
+  feed.value = mergeFeed(fd, gs, 20)
 
   if (!activeArchiveId.value || !as.some((a) => a.id === activeArchiveId.value && a.status === 'open')) {
     activeArchiveId.value = as.find((a) => a.status === 'open')?.id ?? null
@@ -190,10 +193,13 @@ async function loadAll() {
 
 /** 历史页：拉某个存档的记录（新的在前） */
 export async function loadRecords() {
-  if (!historyArchiveId.value) { records.value = []; return }
+  const id = historyArchiveId.value
+  if (!id) { records.value = []; return }
   loadingRecords.value = true
   try {
-    records.value = await getRecords(historyArchiveId.value)
+    // 同 feed：立项动态由该存档的目标投影出来，库里存的立项行丢掉不用
+    const fromDb = await getRecords(id)
+    records.value = mergeFeed(fromDb, goals.value.filter((g) => g.archive_id === id))
   } finally {
     loadingRecords.value = false
   }

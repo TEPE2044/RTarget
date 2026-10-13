@@ -48,8 +48,15 @@ const checkGoals = computed(() =>
 /** 今天还剩几个未打卡。全打完时标题换成一句话，比显示 "0 个未打卡" 好听 */
 const checkLeft = computed(() => checkGoals.value.filter(canCheckInToday).length)
 
-/** 动态里提到的那条目标（点了就进详情） */
+/**
+ * 动态里提到的那条目标（点了就进详情）。
+ *
+ * 立项动态自带 goal_id（是目标投影出来的），精确命中；
+ * 库里其它类型的记录没有这个字段，只能退回"文本里包含目标名"的老办法 ——
+ * 重名时会取错，但那条路只剩结算类动态在走了。
+ */
 function goalOf(f: RecordItem): Goal | undefined {
+  if (f.goal_id) return goals.value.find((g) => g.id === f.goal_id)
   return goals.value.find((g) => f.text.includes(g.content))
 }
 

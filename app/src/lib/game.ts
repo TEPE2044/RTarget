@@ -91,11 +91,18 @@ export interface LedgerEntry {
 
 /** 动态 / 历史记录（首页「最近」与历史页共用） */
 export interface RecordItem {
-  id: number
+  /** 库里是自增 int；立项投影用的是 `goal-<id>` 字符串，所以两种都可能 */
+  id: number | string
   archive_id: string | null
   type: RecordType
   text: string
   created_at: string
+  /**
+   * 只有"立项投影"（见 lib/records.ts）会带这个字段 —— 它是客户端现算的，
+   * **库里 records 表没有这一列**。有了它，点动态就是按 id 精确找目标，
+   * 不用再靠 text 里包含名字去猜（重名会猜错）。
+   */
+  goal_id?: string
 }
 
 // ---------- 档位分值 ----------
@@ -272,17 +279,9 @@ export async function createGoal(input: {
   if (error) throw error
   const goal = data as Goal
 
-  // 立项动态（写失败不阻塞主流程：目标已经立上了）
-  try {
-    await supabase.from('records').insert({
-      user_id: user.id,
-      archive_id: input.archiveId,
-      type: 'created',
-      text: `立了「${goal.content}」 · 押 ${goal.stake}`,
-    })
-  } catch {
-    /* 忽略 */
-  }
+  // 立项动态**不写 records**：它是目标本身的一个投影，由前端按模板现拼
+  // （见 lib/records.ts）。以前这里把"立了「X」· 押 5"整句 insert 进库，
+  // 结果是文案被烤死在行里 —— 改文案改不动历史、点击还得靠名字反查。
 
   // 目标单里那条移出清单。放最后做 —— 上面失败了就别去动人家的清单。
   if (input.todoId) {
