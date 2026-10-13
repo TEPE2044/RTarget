@@ -98,16 +98,32 @@ function goPage(next: PageKey, opts: { top?: boolean } = {}) {
     数全部存档的话角标会跟页面上几张卡对不上。 */
 const pendingGoals = computed(() => activeGoals.value.length)
 
-/** 右下悬浮球：只在需要"新增"的那三页出现，动作跟着页走 */
-const fab = computed(() => {
+/**
+ * 页顶的"新增"长条：待办 / 愿望 两页用。
+ *
+ * 这两页原来是右下角的悬浮球，它会盖住列表最后几行**右侧的删除图标**
+ * —— 图标是行内右对齐的，恰好落在球的那块地方，点不到。
+ * 改成钉在 appbar 下面的整宽长条：挪出了列表的可点区域，命中面积也大得多。
+ */
+const addBar = computed(() => {
   if (page.value === 'todos') {
     return { label: '记一条待办', run: () => todosPage.value?.openNew() }
   }
-  if (page.value === 'goals') {
-    return { label: '立一个新目标', run: () => { showWizard.value = true } }
-  }
   if (page.value === 'wishes') {
     return { label: '加一个愿望', run: () => wishesPage.value?.openNew() }
+  }
+  return null
+})
+
+/**
+ * 右下悬浮球：只剩「目标」页在用。
+ *
+ * 目标卡上「打卡」按钮也在行内右侧，同样有被盖的风险 —— 等真盖到再一起挪，
+ * 现在先不动它。
+ */
+const fab = computed(() => {
+  if (page.value === 'goals') {
+    return { label: '立一个新目标', run: () => { showWizard.value = true } }
   }
   return null
 })
@@ -394,6 +410,21 @@ watch(session, (s) => {
         </button>
       </div>
     </header>
+
+    <!-- 页顶"新增"长条（待办 / 愿望）：钉在 appbar 下面，滚列表时不会跑掉。
+         放在 header 和 main 之间而不是塞进页面组件里 —— 它是页面级的动作，
+         不需要每个页面自己再算一次 appbar 的高度。 -->
+    <div v-if="addBar" class="rt-addbar">
+      <div class="rt-addbar-inner">
+        <button class="rt-addbtn" :disabled="busy" @click="addBar.run()">
+          <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 5.5v13M5.5 12h13" />
+          </svg>
+          {{ addBar.label }}
+        </button>
+      </div>
+    </div>
 
     <main class="rt-main">
       <!-- 数据没拉到：可点重试，一直挂到拉成功为止。
