@@ -10,7 +10,7 @@ import {
 } from './game'
 import type { Archive, Goal, RecordItem, Tier, Todo, Wish } from './game'
 import { friendlyError, isAuthError, isClockSkewError, isNetworkError } from './auth'
-import { mergeFeed } from './records'
+import { recordText } from './records'
 import { bjToday } from './format'
 
 /**
@@ -77,6 +77,17 @@ export const pickableWishes = computed(
 
 export function archiveHasPending(id: string): boolean {
   return goals.value.some((g) => g.archive_id === id && g.status === 'active')
+}
+
+/**
+ * 一条动态要显示的那句话。
+ *
+ * 句子由模板现拼（lib/records.ts），这里只负责补上模板拿不到的东西：
+ * 封档动态要用存档名，而记录里只有 archive_id —— 从本地的 archives 里查一下。
+ */
+export function recordLabel(r: RecordItem): string {
+  const a = archives.value.find((x) => x.id === r.archive_id)
+  return recordText(r, a?.name ?? '（已删除的存档）')
 }
 
 /**
@@ -168,17 +179,15 @@ export async function refresh(opts: { silent?: boolean } = {}): Promise<void> {
 
 async function loadAll() {
   await settleAll() // 惰性结算：把到点的账先结掉
-  // 动态多取一些：里面的立项行会被丢掉、改用目标投影补上（见 lib/records.ts），
-  // 只取 20 条的话过滤完就不够 20 条了
   const [v, as, gs, ts, ws, fd] = await Promise.all([
-    getVitality(), getArchives(), getGoals(), getTodos(), getWishes(), getRecentRecords(40),
+    getVitality(), getArchives(), getGoals(), getTodos(), getWishes(), getRecentRecords(20),
   ])
   vitality.value = v
   archives.value = as
   goals.value = gs
   todos.value = ts
   wishes.value = ws
-  feed.value = mergeFeed(fd, gs, 20)
+  feed.value = fd
 
   if (!activeArchiveId.value || !as.some((a) => a.id === activeArchiveId.value && a.status === 'open')) {
     activeArchiveId.value = as.find((a) => a.status === 'open')?.id ?? null
@@ -197,9 +206,7 @@ export async function loadRecords() {
   if (!id) { records.value = []; return }
   loadingRecords.value = true
   try {
-    // 同 feed：立项动态由该存档的目标投影出来，库里存的立项行丢掉不用
-    const fromDb = await getRecords(id)
-    records.value = mergeFeed(fromDb, goals.value.filter((g) => g.archive_id === id))
+    records.value = await getRecords(id)
   } finally {
     loadingRecords.value = false
   }

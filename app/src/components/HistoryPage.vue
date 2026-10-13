@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
-  askDeleteArchive, booted, busy, historyArchiveId, loadingRecords, records, sealedArchives,
-  selectHistory,
+  askDeleteArchive, booted, busy, historyArchiveId, loadingRecords, recordLabel, records,
+  sealedArchives, selectHistory,
 } from '../lib/store'
 import { fmtDayTime, fmtTime } from '../lib/format'
 
@@ -45,7 +45,7 @@ const ICONS: Record<string, string> = {
             <van-icon :name="ICONS[r.type] || 'passed'" />
           </span>
           <div class="rt-li-2">
-            <div class="rt-li-2-t">{{ r.text }}</div>
+            <div class="rt-li-2-t">{{ recordLabel(r) }}</div>
             <div class="rt-meta">{{ fmtTime(r.created_at) }}</div>
           </div>
         </div>

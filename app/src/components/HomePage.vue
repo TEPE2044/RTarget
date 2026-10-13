@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import {
-  booted, busy, canCheckInToday, checkIn, feed, goals, isCheckGoal, vitality,
+  booted, busy, canCheckInToday, checkIn, feed, goals, isCheckGoal, recordLabel, vitality,
 } from '../lib/store'
 import type { Goal, RecordItem } from '../lib/game'
 import { fmtDayTime, fmtTime } from '../lib/format'
@@ -51,13 +51,14 @@ const checkLeft = computed(() => checkGoals.value.filter(canCheckInToday).length
 /**
  * 动态里提到的那条目标（点了就进详情）。
  *
- * 立项动态自带 goal_id（是目标投影出来的），精确命中；
- * 库里其它类型的记录没有这个字段，只能退回"文本里包含目标名"的老办法 ——
- * 重名时会取错，但那条路只剩结算类动态在走了。
+ * 优先按 goal_id 精确命中；没有 id 的（目标已被删档清掉、或者重名没能回填）
+ * 退回按名字精确比 —— 比原来的 `text.includes(名字)` 稳：包含匹配会把
+ * "踩踩踩" 匹配到 "踩踩踩2" 上。
  */
 function goalOf(f: RecordItem): Goal | undefined {
   if (f.goal_id) return goals.value.find((g) => g.id === f.goal_id)
-  return goals.value.find((g) => f.text.includes(g.content))
+  if (f.goal_content) return goals.value.find((g) => g.content === f.goal_content)
+  return undefined
 }
 
 function onFeedClick(f: RecordItem) {
@@ -166,7 +167,7 @@ function onFeedClick(f: RecordItem) {
           <van-icon :name="ICONS[f.type] || 'passed'" />
         </span>
         <div class="rt-li-2">
-          <div class="rt-li-2-t">{{ f.text }}</div>
+          <div class="rt-li-2-t">{{ recordLabel(f) }}</div>
           <div class="rt-meta">{{ fmtTime(f.created_at) }}</div>
         </div>
         <van-icon v-if="goalOf(f)" name="arrow" class="rt-meta" />

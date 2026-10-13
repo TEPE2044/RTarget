@@ -1,65 +1,53 @@
 /**
  * 动态（首页「最近」/ 历史页）的文案模板。
  *
- * **这是文案的唯一出处** —— 改措辞只改这个文件，不碰数据库、不用跑迁移。
+ * **这是文案的唯一出处** —— 改措辞只改这个文件，不用动数据库、不用跑迁移。
  *
- * 以前是把整句话拼好、连渲染结果一起 insert 进 records.text，三个后果都是坏的：
- * 1. 文案改不动历史数据（行里存的是当年那句话）
- * 2. 想换措辞就得重写 SQL 函数 + 跑一次迁移
- * 3. 点击要靠 text.includes(目标名) 反查目标 —— 重名时取错、删过的取不到
- *    （"点最近那条没反应/点错目标"就是这么来的）
+ * 库里 `records` 只存数据：type、goal_id、goal_content（名字快照）、amount、created_at。
+ * 以前是把拼好的整句话写进 text 列，三个后果都是坏的：
+ * 1. 改文案改不动历史数据（行里存的是当年那句话，得再写一条迁移去刷）
+ * 2. 想换措辞就得重写 SQL 函数
+ * 3. 点击只能靠 text.includes(目标名) 反查目标 —— 重名取错、删过的取不到
  *
- * 现在把「数据」和「文案」分开：
- * - 库里只剩数据（type / archive_id / created_at）
- * - 句子在这里按模板现拼
- * - 立项动态**根本不落库** —— 它是目标本身的一个投影，由目标当场生成，
- *   所以历史里的立项也会跟着新模板走
+ * 那个 text 列 2026-10-13 已经 drop 掉了。
+ *
+ * ⚠️ 改这里的措辞不用跑迁移，但**别把句子再写回库里**。
  */
 
-import type { Goal, RecordItem } from './game'
-
-/** 立项：设置目标 X · N 活力值 */
-function createdText(g: Goal): string {
-  return `设置目标 ${g.content} · ${g.stake} 活力值`
-}
+import type { RecordItem } from './game'
 
 /**
- * 把一条目标投影成它的立项动态。
+ * 一条动态要显示的那句话。
  *
- * 不写库，所以这条记录随目标存在而存在、随目标删除而消失 —— 这符合它的语义：
- * 它陈述的就是"这个目标被设立了"。created_at 直接用目标的创建时间。
- *
- * id 用字符串前缀，免得跟库里 records 的自增 int 撞（渲染时只当 key 用）。
+ * 存档名不在记录里 —— records 对 archives 是 `on delete cascade`，存档在记录就在，
+ * 所以调用方从自己的 archives 列表里查一下传进来即可（见 store 的 recordLabel）。
  */
-export function createdRecord(g: Goal): RecordItem {
-  return {
-    id: `goal-${g.id}`,
-    archive_id: g.archive_id,
-    type: 'created',
-    text: createdText(g),
-    created_at: g.created_at,
-    goal_id: g.id,
+export function recordText(r: RecordItem, archiveName = ''): string {
+  // ⚠️ 过渡兜底：0023 迁移还没跑的时候，goal_content / amount 这些列都还不存在，
+  //    而 text 列还在。这种情况下直接显示库里那句原文，免得界面上一堆
+  //    "（已删除的目标）"让人以为数据丢了。0023 跑完 text 列就没了，
+  //    这里自然走下面的模板分支 —— 确认过之后这一行和 RecordItem.text 可以一起删。
+  if (!r.goal_content && r.text) return r.text
+
+  // 目标被删档清掉后 goal_content 就是唯一的名字来源；真没有就兜一句，别显示空白
+  const name = r.goal_content || '（已删除的目标）'
+  const n = r.amount ?? 0
+
+  switch (r.type) {
+    case 'created':
+      return `设置目标 ${name} · ${n} 活力值`
+    case 'done':
+      return `完成 ${name} · +${n} 活力值`
+    case 'failed':
+      // amount 存的是负数，显示要的是绝对值 —— 减号由模板自己给
+      return `未完成 ${name} · −${Math.abs(n)} 活力值`
+    case 'sealed':
+      // amount = 0 表示封档时档内已经全了结、没扣分
+      return n === 0
+        ? `封档 ${archiveName} · 全部完成`
+        : `封档 ${archiveName} · - ${Math.abs(n)} 活力值`
+    default:
+      // type 在库里是 text 不是枚举，理论上可能出现没见过的值；宁可不显示也别崩
+      return ''
   }
-}
-
-/**
- * 过滤掉库里存量的立项行。
- *
- * 它们是在"文案写库"那套做法下留下的，text 里烤着旧措辞（"立了「X」· 押 5"）。
- * 现在立项统一由 createdRecord 现拼，所以这些旧行不再参与渲染 ——
- * 库里数据不动，只是不显示了。
- */
-export function dropStoredCreated(rs: RecordItem[]): RecordItem[] {
-  return rs.filter((r) => r.type !== 'created')
-}
-
-/**
- * 拼出最终的动态列表：库里的记录 + 目标的立项投影，按时间倒序。
- *
- * limit 只给首页「最近」用（历史页要看全部，不传）。
- */
-export function mergeFeed(fromDb: RecordItem[], gs: Goal[], limit?: number): RecordItem[] {
-  const all = [...dropStoredCreated(fromDb), ...gs.map(createdRecord)]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  return limit ? all.slice(0, limit) : all
 }
