@@ -8,6 +8,7 @@ import {
   isUpdateConfigured,
 } from './lib/updater'
 import type { LatestInfo } from './lib/updater'
+import { notifyReady } from './lib/desktopUpdate'
 import { useTheme } from './lib/theme'
 import {
   activeGoals, bindSignOut, busy, goals, loadFail, newArchive, refresh, resetAll,
@@ -20,6 +21,7 @@ import WishesPage from './components/WishesPage.vue'
 import HistoryPage from './components/HistoryPage.vue'
 import GoalDetail from './components/GoalDetail.vue'
 import GoalWizard from './components/GoalWizard.vue'
+import UpdateGate from './components/UpdateGate.vue'
 import { supabase } from './lib/supabase.ts'
 
 const { session, loading, forceSignOut, passwordPending, setPassword } = useAuth()
@@ -29,6 +31,12 @@ const { theme, toggleTheme } = useTheme()
 bindSignOut(forceSignOut)
 
 const userEmail = computed(() => session.value?.user?.email ?? '')
+
+/**
+ * 桌面端：过更新闸门前不渲染主界面。
+ * 浏览器和手机端永远是 false —— 这个分支完全不影响它们。
+ */
+const desktopGate = ref(isDesktopShell)
 
 // ---------- 顶栏时钟 ----------
 
@@ -320,6 +328,11 @@ function autoSettleIfExpired() {
 let stopResume: (() => void) | null = null
 
 onMounted(() => {
+  // 桌面壳：界面挂载后立刻提交本次 bundle 为「已知可用」。
+  // **必须与闸门状态无关地调用** —— 闸门挡着时界面也已经渲染了，
+  // 漏调会被插件判成"这一版没起来"，下次启动把好包拉黑并回退。
+  if (isDesktopShell) void notifyReady()
+
   clockTimer = setInterval(() => { now.value = new Date() }, 1000)
   settleTimer = setInterval(autoSettleIfExpired, 30_000)
 
@@ -365,8 +378,11 @@ watch(session, (s) => {
 </script>
 
 <template>
+  <!-- 桌面端：先过更新闸门。没有新版 / 检查失败一律放行（见 UpdateGate.vue） -->
+  <UpdateGate v-if="desktopGate" @pass="desktopGate = false" />
+
   <!-- 会话恢复中：先别闪一下登录页 -->
-  <div v-if="loading" class="app-bg rt-center">
+  <div v-else-if="loading" class="app-bg rt-center">
     <span class="rt-meta">载入中…</span>
   </div>
 

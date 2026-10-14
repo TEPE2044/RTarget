@@ -23,7 +23,18 @@ export const isNative = Capacitor.isNativePlatform()
  */
 declare global {
   interface Window {
-    __TAURI__?: { app?: { getVersion?: () => Promise<string> } }
+    /**
+     * Tauri 全局对象（桌面壳开了 withGlobalTauri 才有）。
+     * - app.getVersion：读安装包版本（本文件用）
+     * - core.invoke / event.listen：调壳里的命令与事件（见 lib/desktopUpdate.ts）
+     */
+    __TAURI__?: {
+      app?: { getVersion?: () => Promise<string> }
+      core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+      event?: {
+        listen?: (event: string, cb: (e: { payload: unknown }) => void) => Promise<() => void>
+      }
+    }
   }
 }
 
