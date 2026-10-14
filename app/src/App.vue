@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { showFailToast, showLoadingToast, showSuccessToast, showToast } from 'vant'
+import { showConfirmDialog, showFailToast, showLoadingToast, showSuccessToast, showToast } from 'vant'
 import { useAuth } from './lib/auth'
 import { onAppResume, registerBackButton, syncSystemBars } from './lib/native'
 import {
@@ -8,7 +8,10 @@ import {
   isUpdateConfigured,
 } from './lib/updater'
 import type { LatestInfo } from './lib/updater'
-import { notifyReady } from './lib/desktopUpdate'
+import {
+  check as desktopCheck, download as desktopDownload, notifyReady, relaunch as desktopRelaunch,
+} from './lib/desktopUpdate'
+import type { CheckOutcome, DownloadOutcome } from './lib/desktopUpdate'
 import { useTheme } from './lib/theme'
 import {
   activeGoals, bindSignOut, busy, goals, loadFail, newArchive, refresh, resetAll,
@@ -245,11 +248,70 @@ async function loadCurrentVersion() {
   currentVerLoaded = true
 }
 
-async function onCheckUpdate() {
-  // 桌面壳（Tauri）：没有 OTA 这条路 —— 版本号在下面显示，更新走重装安装包
-  if (isDesktopShell) {
-    return showToast('桌面版暂不支持在线更新：装新安装包即可')
+/**
+ * Tauri 的 `invoke` 被拒时抛的是**字符串**（不是 Error 实例），
+ * 直接取 `.message` 会得到 undefined —— 桌面端这两处提示都走它。
+ */
+function errText(e: unknown): string {
+  if (e instanceof Error) return e.message
+  return typeof e === 'string' ? e : JSON.stringify(e)
+}
+
+/** 桌面端：这两种结局是"硬不行"，给一句明确的话；其余状态都还有下一步 */
+function desktopBlockedMessage(o: { status: string; required?: string; shell?: string }): string | null {
+  if (o.status === 'blacklisted') return '这个更新包之前启动失败过，已被排除，等下一个新包'
+  if (o.status === 'shellTooOld') return `这个版本需要更新的安装包（要求 ${o.required}，当前 ${o.shell}）`
+  return null
+}
+
+/**
+ * 桌面壳（Tauri）的「检查更新」：check → download → 就位后问要不要立即重启。
+ *
+ * 与启动闸门（UpdateGate）共用同一套底层调用，区别是这里**不强制** ——
+ * 闸门是"必须更新或退出应用"，这里可以选「下次启动」。
+ */
+async function checkUpdateOnDesktop() {
+  updateBusy.value = true
+  try {
+    let found: CheckOutcome
+    try {
+      found = await desktopCheck()
+    } catch (e) {
+      return showFailToast(`检查失败：${errText(e)}`)
+    }
+    if (found.status === 'upToDate') return showSuccessToast('已是最新版本')
+    const blocked = desktopBlockedMessage(found)
+    if (blocked) return showFailToast(blocked)
+
+    const t = showLoadingToast({ message: '正在下载新版本…', forbidClick: true, duration: 0 })
+    let done: DownloadOutcome
+    try {
+      done = await desktopDownload()
+    } catch (e) {
+      t.close()
+      return showFailToast(`下载失败：${errText(e)}`)
+    }
+    t.close()
+
+    if (done.status === 'staged' || done.status === 'alreadyStaged') {
+      showConfirmDialog({
+        title: '新版本已就绪',
+        message: `${done.version} 已下载完成，重启后生效。`,
+        confirmButtonText: '立即重启',
+        cancelButtonText: '下次启动',
+      }).then(() => void desktopRelaunch()).catch(() => {})
+      return
+    }
+    if (done.status === 'upToDate') return showSuccessToast('已是最新版本')
+    showFailToast(desktopBlockedMessage(done) ?? '更新失败')
+  } finally {
+    updateBusy.value = false
   }
+}
+
+async function onCheckUpdate() {
+  // 桌面壳（Tauri）：走热更新那条路，不再是"装新安装包即可"
+  if (isDesktopShell) return checkUpdateOnDesktop()
   if (!isUpdateConfigured) {
     return showToast('还没配更新源（VITE_UPDATE_BASE）')
   }
