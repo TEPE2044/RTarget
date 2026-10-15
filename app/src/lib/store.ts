@@ -223,8 +223,12 @@ async function loadAll() {
   wishes.value = ws
   feed.value = fd
 
+  // 初始选中**页签里排在最前的那个档**（= 最近活跃的），不是 getArchives() 顺序里的第一个。
+  // as 是按**建档时间**倒序的，取 as.find(open) 会选中刚建的空档 ——
+  // 而它在新排序里已经被排到最后，于是"选中的那个不在第一位"，看着很别扭。
+  // 只在**当前选中无效**时才改，不跟用户的显式选择打架。
   if (!activeArchiveId.value || !as.some((a) => a.id === activeArchiveId.value && a.status === 'open')) {
-    activeArchiveId.value = as.find((a) => a.status === 'open')?.id ?? null
+    activeArchiveId.value = openArchives.value[0]?.id ?? null
   }
   if (!historyArchiveId.value || !as.some((a) => a.id === historyArchiveId.value && a.status === 'sealed')) {
     historyArchiveId.value = sealedArchives.value[0]?.id ?? null
