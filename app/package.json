@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:desktop": "vite --mode desktop",
     "build": "vue-tsc -b && vite build",
+    "build:desktop": "vue-tsc -b && vite build --mode desktop",
     "preview": "vite preview",
     "cap:sync": "npm run build && cap sync android",
     "cap:android": "npm run cap:sync && cap open android",

@@ -1007,3 +1007,168 @@ html.rt-noscroll { overflow: hidden; }
 /* 底栏只有一个动作时：居中，别缩在 1fr 那一列里靠左 */
 .rt-page-foot-solo { display: flex; justify-content: center; }
 .rt-page-foot-solo > * { min-width: 200px; }
+
+/* ============================================================
+   桌面端外壳（构建期变体）
+   ============================================================
+
+   下面所有规则都挂在 .plat-desktop 下 —— 这个 class 只由 `vite --mode desktop`
+   的构建（main.ts）加上，所以手机版构建即使带着这一段，也永远不会命中。
+
+   要点：**页面组件和业务逻辑没有第二份**。这里只做两件事：
+     1. 把"壳"从 顶栏+底部导航+悬浮球 换成 左侧栏+页头
+     2. 把内容区从 640px 窄列 放宽
+
+   窄列是被 --rt-maxw 卡住的，而 .rt-main / .rt-appbar-inner / .rt-tabbar-inner
+   / .rt-addbar-inner / .rt-fabwrap-inner 都用它 —— 改这一个变量就整体放宽。
+   注意它会连带影响".van-popup--bottom 在宽屏下的宽度"（见文件上方那条 @media），
+   所以末尾要单独把抽屉宽度锁回去。 */
+
+.plat-desktop {
+  --rt-maxw: 100%;
+}
+
+/* 左侧栏 | (页头 / 内容区)：两行两列。
+   滚动交给 .rt-main，整页不滚 —— 这样侧栏和页头是固定不动的。 */
+.plat-desktop .rt {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.plat-desktop .rt-main {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  overflow: auto;
+  /* 关键的一行：手机端这里是 `max-width + margin: 0 auto`（窄列居中）。
+     在网格里，`margin: 0 auto` 会让子项**不再拉伸**，退化成"按内容宽度收缩并居中"
+     —— 实测就是 964 的格子里只有 517 宽的一小列（截图里那条悬空的窄列）。
+     桌面端必须把 auto 去掉，让它铺满整格。 */
+  margin: 0;
+  /* 原来这行的底部内边距是给底部导航让位的（calc(--rt-tabbar + … + 32px)），
+     桌面没有底部导航，换成普通边距 */
+  padding: 20px 24px 32px;
+}
+
+/* 页头已经有「＋新目标 / ＋记待办」了，首页行内那对入口在桌面上是重复的 */
+.plat-desktop .rt-quick { display: none; }
+
+/* ---------- 页面级：把"手机卡片"在桌面上摊开 ----------
+   这些页面的标记与手机端**共用一份**（这里一个字都没改），
+   所以下面全是"宽屏下怎么排"的调整，窄回手机宽度就自动失效。 */
+
+/* 目标卡：手机上标题居中（窄列里居中才站得住），到 900px 宽就散架了 —— 靠左 */
+.plat-desktop .rt-goal-t { text-align: left; }
+.plat-desktop .rt-deadline { text-align: left; }
+.plat-desktop .rt-goal-m { justify-content: flex-start; }
+/* 奖励 / 惩罚：手机上等分铺满是对的；桌面上摊到近 900px 就成了两条空色带 */
+.plat-desktop .rt-duo { max-width: 620px; }
+
+/* 首页动态 / 历史这类"图标 + 文案 + 时间"的行：
+   手机上时间另起一行；桌面横着排更省竖向空间，时间靠右、贴着末尾那个箭头。 */
+.plat-desktop .rt-li:has(.rt-li-ic) { align-items: center; }
+.plat-desktop .rt-li:has(.rt-li-ic) .rt-li-2 {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+}
+.plat-desktop .rt-li:has(.rt-li-ic) .rt-li-2 .rt-meta {
+  margin-left: auto; flex: 0 0 auto; white-space: nowrap;
+}
+
+/* ---------- 左侧栏 ---------- */
+
+.plat-desktop .dt-side {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px 10px;
+  background: var(--rt-card);
+  border-right: 0.5px solid var(--rt-line);
+}
+
+.plat-desktop .dt-brand { padding: 0 8px 14px; }
+.plat-desktop .dt-brand-t { font-size: 17px; font-weight: 500; letter-spacing: 0.02em; }
+
+.plat-desktop .dt-nav { display: flex; flex-direction: column; gap: 2px; }
+.plat-desktop .dt-navi {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border: none; border-radius: 8px;
+  background: transparent;
+  color: var(--rt-tx2);
+  font: inherit; font-size: 14px; line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.plat-desktop .dt-navi:hover { background: var(--rt-hover); color: var(--rt-tx); }
+.plat-desktop .dt-navi.active { background: var(--rt-blue-bg); color: var(--rt-blue); font-weight: 500; }
+/* 选中项的左侧竖条：贴在侧栏内边距上，像编辑器那样"指出来" */
+.plat-desktop .dt-navi.active::before {
+  content: '';
+  position: absolute;
+  left: -10px; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--rt-blue);
+}
+.plat-desktop .dt-navi-tx { flex: 1; min-width: 0; }
+.plat-desktop .dt-navi-n { flex: 0 0 auto; }
+
+.plat-desktop .dt-gap { flex: 1; }
+
+.plat-desktop .dt-vital {
+  margin: 6px 4px 10px;
+  padding: 9px 11px;
+  border: 0.5px solid var(--rt-line);
+  border-radius: 12px;
+  background: var(--rt-bg);
+}
+.plat-desktop .dt-vital-n { font-size: 20px; font-weight: 500; line-height: 1.25; }
+
+.plat-desktop .dt-tools { display: flex; gap: 2px; padding: 0 4px 8px; }
+
+.plat-desktop .dt-acct { padding: 10px 8px 4px; border-top: 0.5px solid var(--rt-line); }
+.plat-desktop .dt-acct-mail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plat-desktop .dt-acct-out {
+  margin-top: 6px; padding: 0;
+  border: none; background: transparent;
+  color: var(--rt-red);
+  font: inherit; font-size: 12px;
+  cursor: pointer;
+}
+
+/* ---------- 页头 ---------- */
+
+.plat-desktop .dt-pagebar {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  background: var(--rt-card);
+  border-bottom: 0.5px solid var(--rt-line);
+}
+.plat-desktop .dt-pagebar-in {
+  display: flex; align-items: center; gap: 10px;
+  min-width: 0;
+  padding: 10px 24px;
+}
+.plat-desktop .dt-pagebar-l { min-width: 0; }
+.plat-desktop .dt-page-t { font-size: 16px; font-weight: 500; line-height: 1.3; }
+.plat-desktop .dt-pagebtn { flex: 0 0 auto; white-space: nowrap; }
+.plat-desktop .dt-clock { margin-left: 6px; white-space: nowrap; }
+
+/* ---------- 抽屉：桌面仍是"底部居中面板"，但宽度要锁住 ----------
+   --rt-maxw 被放宽成 100% 之后，上方那条 @media 里的 `width: var(--rt-maxw)`
+   会让抽屉变成整屏宽（margin-left 也跟着变成 -50%），必须覆盖回来。
+   真做成"垂直居中的对话框"属于版面调整，留到后面单独定。 */
+.plat-desktop .van-popup--bottom {
+  width: 560px;
+  margin-left: -280px;
+}
+.plat-desktop .rt-sheet-inner { max-width: 560px; }

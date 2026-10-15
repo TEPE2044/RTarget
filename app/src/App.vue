@@ -14,7 +14,8 @@ import {
 import type { CheckOutcome, DownloadOutcome } from './lib/desktopUpdate'
 import { useTheme } from './lib/theme'
 import {
-  activeGoals, bindSignOut, busy, goals, loadFail, newArchive, refresh, resetAll,
+  activeGoals, bindSignOut, busy, goals, loadFail, newArchive, openTodos, openWishes,
+  refresh, resetAll, vitality,
 } from './lib/store'
 import LoginCard from './components/LoginCard.vue'
 import HomePage from './components/HomePage.vue'
@@ -108,6 +109,26 @@ function goPage(next: PageKey, opts: { top?: boolean } = {}) {
     口径必须跟目标页看到的一致：只算**当前这个存档**的，
     数全部存档的话角标会跟页面上几张卡对不上。 */
 const pendingGoals = computed(() => activeGoals.value.length)
+
+/**
+ * 桌面端外壳开关 —— **构建期字面量**（`vite --mode desktop` 时才为 true）。
+ *
+ * 所以模板里 `v-if="isDesktopPlat"` 那几段只会出现在桌面包里，
+ * `v-if="!isDesktopPlat"` 那几段（顶栏 / 底部导航 / 悬浮球）在桌面包里被删掉。
+ * 两套外壳**不共存**，而页面组件与下面所有逻辑只有一份，两边共用。
+ */
+const isDesktopPlat = import.meta.env.VITE_PLATFORM === 'desktop'
+
+const deskTitle = computed(() => PAGES.find((p) => p.key === page.value)?.label ?? '')
+
+/** 页头的副标题：口径必须跟各页角标对得上，别自己另算一套 */
+const deskSub = computed(() => {
+  if (page.value === 'home') return `进行中 ${pendingGoals.value} 件 · 共 ${goals.value.length} 个目标`
+  if (page.value === 'todos') return `未完成 ${openTodos.value.length} 条`
+  if (page.value === 'goals') return `进行中 ${pendingGoals.value} 件`
+  if (page.value === 'wishes') return `待实现 ${openWishes.value.length} 个`
+  return '封档记录与动态'
+})
 
 /**
  * 页顶的"新增"长条：待办 / 愿望 两页用。
@@ -451,8 +472,115 @@ watch(session, (s) => {
   <LoginCard v-else-if="!session || passwordPending" />
 
   <div v-else class="rt">
-    <!-- ---------- 顶部窄栏 ---------- -->
-    <header class="rt-appbar">
+    <!-- ========== 桌面端外壳（构建期变体；手机版构建里整段不存在） ==========
+         与手机端共用同一份页面组件和全部逻辑，这里只是换一层"壳"：
+         手机 = 顶栏 + 底部导航 + 悬浮球；桌面 = 左侧栏 + 页头。 -->
+    <aside v-if="isDesktopPlat" class="dt-side">
+      <div class="dt-brand">
+        <div class="dt-brand-t">RTarget</div>
+        <div class="rt-meta">懒人自驱动 · 奖罚迭代</div>
+      </div>
+
+      <nav class="dt-nav">
+        <button v-for="p in PAGES" :key="p.key" class="dt-navi"
+          :class="{ active: page === p.key }" @click="goPage(p.key)">
+          <svg v-if="p.key === 'home'" class="rt-ico" width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.6 10.4 12 3.8l8.4 6.6" />
+            <path d="M5.8 9.3V20h12.4V9.3" />
+          </svg>
+          <svg v-else-if="p.key === 'todos'" class="rt-ico" width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <path d="M4.4 6.6h2.4M4.4 12h2.4M4.4 17.4h2.4" />
+            <path d="M10.6 6.6h9M10.6 12h9M10.6 17.4h9" />
+          </svg>
+          <svg v-else-if="p.key === 'goals'" class="rt-ico" width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <circle cx="12" cy="12" r="8.3" />
+            <circle cx="12" cy="12" r="3.4" />
+          </svg>
+          <svg v-else-if="p.key === 'wishes'" class="rt-ico" width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z" />
+          </svg>
+          <svg v-else class="rt-ico" width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8.3" />
+            <path d="M12 7.4V12l3.2 1.9" />
+          </svg>
+          <span class="dt-navi-tx">{{ p.label }}</span>
+          <span v-if="p.key === 'todos' && openTodos.length" class="rt-meta rt-num dt-navi-n">
+            {{ openTodos.length }}
+          </span>
+          <span v-else-if="p.key === 'goals' && pendingGoals" class="rt-meta rt-num dt-navi-n">
+            {{ pendingGoals }}
+          </span>
+        </button>
+      </nav>
+
+      <span class="dt-gap"></span>
+
+      <!-- 活力值是全局唯一的数：手机要回首页才看得到，桌面就让它常驻侧栏底部 -->
+      <div class="dt-vital">
+        <div class="rt-meta">活力值</div>
+        <div class="dt-vital-n rt-num">{{ vitality }}</div>
+        <div class="rt-meta">进行中 {{ pendingGoals }} 件 · 共 {{ goals.length }} 个目标</div>
+      </div>
+
+      <div class="dt-tools">
+        <button class="rt-iconbtn" :disabled="busy" aria-label="刷新" @click="refresh()">
+          <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 11.5a8 8 0 1 0-2.4 5.7" />
+            <path d="M20 5.5v6h-6" />
+          </svg>
+        </button>
+        <button class="rt-iconbtn" :aria-label="theme === 'dark' ? '切换成浅色' : '切换成深色'"
+          @click="toggleTheme()">
+          <svg v-if="theme === 'dark'" class="rt-ico" width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5" />
+          </svg>
+          <svg v-else class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z" />
+          </svg>
+        </button>
+        <button class="rt-iconbtn" aria-label="更多" @click="openMore()">
+          <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5.2" r="1.6" />
+            <circle cx="12" cy="12" r="1.6" />
+            <circle cx="12" cy="18.8" r="1.6" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="dt-acct">
+        <div class="rt-meta dt-acct-mail">{{ userEmail }}</div>
+        <button class="dt-acct-out" @click="signOut()">退出登录</button>
+      </div>
+    </aside>
+
+    <!-- 页头：页级动作收到右上角（桌面上不该再有悬浮球 / 整宽长条） -->
+    <header v-if="isDesktopPlat" class="dt-pagebar">
+      <div class="dt-pagebar-in">
+        <div class="dt-pagebar-l">
+          <div class="dt-page-t">{{ deskTitle }}</div>
+          <div class="rt-meta">{{ deskSub }}</div>
+        </div>
+        <span class="rt-push"></span>
+        <button class="rbtn rbtn-primary dt-pagebtn" :disabled="busy" @click="showWizard = true">
+          ＋ 新目标
+        </button>
+        <button class="rbtn dt-pagebtn" :disabled="busy"
+          @click="goPage('todos', { top: true }); todosPage?.openNew()">＋ 记待办</button>
+        <span class="rt-meta rt-num dt-clock">{{ clock }}</span>
+      </div>
+    </header>
+
+    <!-- ---------- 顶部窄栏（手机端） ---------- -->
+    <header v-if="!isDesktopPlat" class="rt-appbar">
       <div class="rt-appbar-inner">
         <span class="rt-brand">RTarget</span>
         <span class="rt-meta rt-num" style="margin-top:3px">{{ clock }}</span>
@@ -492,7 +620,7 @@ watch(session, (s) => {
     <!-- 页顶"新增"长条（待办 / 愿望）：钉在 appbar 下面，滚列表时不会跑掉。
          放在 header 和 main 之间而不是塞进页面组件里 —— 它是页面级的动作，
          不需要每个页面自己再算一次 appbar 的高度。 -->
-    <div v-if="addBar" class="rt-addbar">
+    <div v-if="!isDesktopPlat && addBar" class="rt-addbar">
       <div class="rt-addbar-inner">
         <button class="rt-addbtn" :disabled="busy" @click="addBar.run()">
           <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -558,7 +686,7 @@ watch(session, (s) => {
     </main>
 
     <!-- ---------- 底部导航 ---------- -->
-    <nav class="rt-tabbar">
+    <nav v-if="!isDesktopPlat" class="rt-tabbar">
       <div class="rt-tabbar-inner">
         <button v-for="p in PAGES" :key="p.key" class="rt-tab"
           :class="{ active: page === p.key }" @click="goPage(p.key)">
@@ -597,7 +725,7 @@ watch(session, (s) => {
     </nav>
 
     <!-- ---------- 右下悬浮球（只在能"新增"的三页出现） ---------- -->
-    <div v-if="fab" class="rt-fabwrap">
+    <div v-if="!isDesktopPlat && fab" class="rt-fabwrap">
       <div class="rt-fabwrap-inner">
         <button class="rt-fab" :disabled="busy" :aria-label="fab.label" @click="fab.run()">
           <svg class="rt-ico" width="26" height="26" viewBox="0 0 24 24" fill="none"
