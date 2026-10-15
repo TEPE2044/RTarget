@@ -44,18 +44,38 @@ export const historyArchiveId = ref<string | null>(null)
 // ---------- 派生 ----------
 
 /**
- * 进行中的档。
+ * 进行中的档，**按"最近活跃"排**：最近动过的排最前。
  *
- * **还有未了结目标的排最前** —— 那些才是"活跃"的档，一进目标页要先看到；
- * 空档（刚建、或目标都结清了）往后放。组内保持 archives 的原始顺序
- * （按建档时间倒序，见 getArchives），sort 是稳定的，不会打乱。
- * 只影响展示顺序，activeArchiveId 和切换逻辑都不受影响。
+ * 为什么不用 archives 自己的 created_at：那会让刚建的**空档**顶到最前，
+ * 而真正在做事的档（往往建得最早）反而沉下去 —— 空档"没东西"却占着头位，很别扭。
+ *
+ * 为什么**不给 archives 加 updated_at**（更直觉的想法）：那列得靠人维护 ——
+ * check_in_goal / complete_goal / giveup_goal / settle_goals 全在 SQL 函数里，
+ * 每条写入路径都要记得 bump，漏一处就悄悄排错，而且"什么算活跃"这条规则
+ * 会散在客户端和四个函数里。而这些事实**本来就在 goals 上**
+ * （created_at / settled_at / last_check_on），getGoals() 又把全部目标都拉到了本地
+ * —— 派生出来零迁移、零写入改动、不可能漂移。
+ *
+ * 口径：某档的"活动时间" = 它名下所有目标里最新的
+ * max(settled_at, last_check_on, created_at)；**一个目标都没有的档记 0**，自然沉底。
+ * 同分时保持 archives 的原顺序（建档时间倒序）—— sort 是稳定的。
+ *
+ * 已知不覆盖：改备忘（exec）不写时间戳，所以"光写备忘"不算活跃。
+ * 真要算进去，就得回到"给目标加时间戳列"那条路。
  */
 export const openArchives = computed(() => {
-  const list = archives.value.filter((a) => a.status === 'open')
-  return [...list].sort(
-    (a, b) => Number(archiveHasPending(b.id)) - Number(archiveHasPending(a.id)),
-  )
+  const activity = new Map<string, number>()
+  for (const g of goals.value) {
+    const t = Math.max(
+      Date.parse(g.settled_at ?? '') || 0,
+      Date.parse(g.last_check_on ?? '') || 0,
+      Date.parse(g.created_at) || 0,
+    )
+    if (t > (activity.get(g.archive_id) ?? 0)) activity.set(g.archive_id, t)
+  }
+  return archives.value
+    .filter((a) => a.status === 'open')
+    .sort((a, b) => (activity.get(b.id) ?? 0) - (activity.get(a.id) ?? 0))
 })
 
 /** 封档记录：**最新的排最前**（按封档时间，不是建档时间） */
