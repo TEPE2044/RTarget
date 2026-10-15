@@ -51,6 +51,7 @@ async function saveExecNow() {
   if (!goal.value) return
   await flush()
   showToast('备忘已保存')
+  close()
 }
 
 /**
