@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
-import { showToast } from 'vant'
+import { computed, ref, watch } from 'vue'
+import { showConfirmDialog, showToast } from 'vant'
 import {
   askFinish, askGiveUp, busy, canCheckInToday, checkIn, goals, isCheckGoal, saveExec,
 } from '../lib/store'
@@ -12,9 +12,16 @@ const emit = defineEmits<{ (e: 'update:show', v: boolean): void }>()
 
 const goal = computed(() => goals.value.find((g) => g.id === props.goalId) ?? null)
 
-/** 执行区：随写随存（停手 0.8 秒才落库，免得每敲一个字打一次请求） */
+/**
+ * 执行区（备忘）。
+ *
+ * **没有自动保存** —— 原来那套"停手 0.8 秒就落库"去掉了。它有个很实的副作用：
+ * 输入框下面那个「保存备忘」按钮会因为"已经存过了"而一直保持禁用（灰的、写「已保存」），
+ * 于是**你想保存的那一刻，屏幕上唯一醒目、唯一能点的按钮只剩顶栏那颗黑「完成」**
+ * —— 点下去就是把目标结束了。这不是人粗心，是没有可点的保存动作。
+ * 现在写进去只有一个入口：输入框下面的「保存备忘」。存没存，看那个按钮就知道。
+ */
 const exec = ref('')
-let timer: ReturnType<typeof setTimeout> | null = null
 
 watch(
   () => [props.show, props.goalId] as const,
@@ -24,53 +31,60 @@ watch(
   { immediate: true },
 )
 
-watch(exec, () => {
-  if (!props.show || !goal.value) return
-  if (timer) clearTimeout(timer)
-  timer = setTimeout(() => void flush(), 800)
-})
-
-async function flush() {
-  if (timer) { clearTimeout(timer); timer = null }
-  const g = goal.value
-  if (!g || g.exec === exec.value) return
-  await saveExec(g.id, exec.value)
-  g.exec = exec.value // 本地对齐，别让下一次判定又觉得是脏的
-}
-
-/** 备忘是否已经落库（flush 之后会把 goal.exec 对齐，所以两个值相等就是干净的） */
+/** 备忘是否已经落库（保存成功后会把 goal.exec 对齐，所以两个值相等就是干净的） */
 const execClean = computed(() => !goal.value || goal.value.exec === exec.value)
 
-function close() {
-  void flush()
+/**
+ * 把备忘落库。**只写字、不退出**，返回"到底存上没有"。
+ * 存失败时不能把 goal.exec 对齐 —— 否则界面会谎报「已保存」，人一走字就丢了。
+ */
+async function saveMemo(): Promise<boolean> {
+  const g = goal.value
+  if (!g || g.exec === exec.value) return true
+  const ok = await saveExec(g.id, exec.value)
+  if (ok) g.exec = exec.value // 本地对齐，别让下一次判定又觉得是脏的
+  return ok
+}
+
+/** 「保存备忘」：存好就走（这是"写完了"的动作） */
+async function onSaveClick() {
+  if (!(await saveMemo())) return // 没存上就留在页面，别把人连同字一起带走
+  showToast('备忘已保存')
   emit('update:show', false)
 }
 
-/** 手动保存备忘：输入框下面要有一个属于"备忘"的明确动作 */
-async function saveExecNow() {
-  if (!goal.value) return
-  await flush()
-  showToast('备忘已保存')
-  close()
+/**
+ * 返回。
+ *
+ * 没有自动保存，所以有没存的东西时问一句 —— **这不是自动保存**：
+ * 选「不保存」就一个字都不写。
+ */
+function close() {
+  if (execClean.value) { emit('update:show', false); return }
+  showConfirmDialog({
+    title: '备忘还没保存',
+    message: '直接返回会丢掉这次改动。',
+    confirmButtonText: '保存',
+    cancelButtonText: '不保存',
+    lockScroll: false,
+  }).then(() => void onSaveClick()).catch(() => emit('update:show', false))
 }
 
 /**
- * 完成 / 放弃：先把备忘落库，再弹确认框。
- *
- * 用 void flush() 而不是 await —— 落库是后台的事，不该卡住确认框弹出来；
- * 就算用户最后取消了，备忘也已经存下了，这是无害的。
+ * 完成 / 放弃：先把备忘存下来，再弹确认框 ——
+ * 这条目标是"结束"，正在写的东西不该跟着一起丢。
  */
 function onCompleteClick() {
   const g = goal.value
   if (!g) return
-  void flush()
+  void saveMemo()
   askFinish(g)
 }
 
 function onGiveUpClick() {
   const g = goal.value
   if (!g) return
-  void flush()
+  void saveMemo()
   askGiveUp(g)
 }
 
@@ -108,8 +122,6 @@ watch(
   },
 )
 
-onUnmounted(() => void flush())
-
 /** 底部那行结论：已结清时替掉「完成」（那按钮对已结清的目标只会报"这条已经结清了"） */
 const outcomeText = computed(() => {
   const g = goal.value
@@ -144,9 +156,13 @@ const outcomeText = computed(() => {
           <!-- 已结清的回看态（首页「最近」点进来）没有动作可做，摆一个点了只会报
                「这条已经结清了」的按钮没意义 —— 换成结论 -->
           <span v-if="settled" class="rt-meta">{{ outcomeText }}</span>
+          <!-- 顶栏只放"结束这条目标"的两个动作，**两个都不用实心黑** ——
+               实心黑是"最该点"的信号，而这里没有一个动作是最该点的：
+               写备忘时屏幕上的实心黑应该只属于「保存备忘」（见下面那行）。
+               标签也带上宾语（完成目标 / 放弃目标），不给"以为是保存"留余地。 -->
           <div v-else class="btn-group">
-            <button class="rbtn rbtn-danger" @click="onGiveUpClick()">放弃</button>
-            <button v-if="!isCheckGoal(goal)" class="rbtn-primary ml-2" @click="onCompleteClick()">完成</button>
+            <button class="rbtn rbtn-danger" @click="onGiveUpClick()">放弃目标</button>
+            <button v-if="!isCheckGoal(goal)" class="rbtn ml-2" @click="onCompleteClick()">完成目标</button>
           </div>
         </div>
       </div>
@@ -198,23 +214,15 @@ const outcomeText = computed(() => {
           <van-field v-model="exec" type="textarea" autosize :rows="6"
             placeholder="计划、步骤、想法" />
         </div>
-        <!-- 备忘要有自己的保存动作：「完成」就悬在上面，很容易被当成"保存备忘"
-             而误触（一结算就没法回头）。所以按钮 + 状态提示都摆在这儿。
-             停手 0.8 秒的自动保存还在，这个按钮只是把落库变得"看得见"。 -->
+        <!-- 备忘的保存动作就在输入框下面，而且**有改动时它是实心黑**（干净的才灰掉）——
+             这样"有没有东西没存"不用去别处找，一眼就看得出；
+             顶栏那两个动作于是不会在你想保存的时候冒充保存按钮。 -->
         <div class="rt-exectools">
-          <button class="rbtn" :disabled="busy || execClean" @click="saveExecNow()">保存备忘</button>
+          <button :class="execClean ? 'rbtn' : 'rbtn-primary'" :disabled="busy || execClean"
+            @click="onSaveClick()">保存备忘</button>
           <span class="rt-meta">{{ execClean ? '已保存' : '有改动没保存' }}</span>
         </div>
       </div>
-
-      <!-- 放弃已经移到顶栏了，这条底栏只剩「完成」——
-           用 solo 变体居中，不然它会缩在 1fr 那一列里靠左 -->
-      <!-- <div class="rt-page-foot rt-page-foot-solo"> -->
-        <!-- 打卡型没有「完成」可点：它只有一个达成条件 —— 打满，
-             而打满那一刻库里会自动结算。摆一个点不动的按钮只会让人猜。 -->
-        <!-- <button v-if="!isCheckGoal(goal)" class="rbtn-primary" @click="doComplete()">完成</button>
-        <span v-else class="rt-meta">打满就自动结算，不用点完成</span>
-      </div> -->
     </div>
   </van-popup>
 </template>

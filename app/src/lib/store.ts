@@ -418,12 +418,19 @@ export async function giveUpGoal(goal: Goal) {
   }
 }
 
-/** 执行区随写随存（失败只提示，不打断） */
-export async function saveExec(id: string, exec: string) {
+/**
+ * 执行区（备忘）落库。返回**是否真的写成功**。
+ *
+ * 详情那边靠这个决定要不要把界面标成"已保存" —— 失败时若照样标成已保存，
+ * 人会以为存好了然后离开，字就丢了（自动保存已经去掉，这个状态更得是真话）。
+ */
+export async function saveExec(id: string, exec: string): Promise<boolean> {
   try {
     await updateGoalExec(id, exec)
+    return true
   } catch (e) {
     await reportError(e)
+    return false
   }
 }
 
@@ -439,7 +446,7 @@ export function askGiveUp(goal: Goal) {
     title: '放弃这个目标？',
     message: `扣 ${goal.stake} 活力值`
       + (goal.todo_id ? '，退回待办' : '') + '。',
-    confirmButtonText: '放弃',
+    confirmButtonText: '放弃目标',
     confirmButtonColor: '#C0392B',
     lockScroll: false,
   }).then(() => void giveUpGoal(goal)).catch(() => {})
@@ -448,15 +455,16 @@ export function askGiveUp(goal: Goal) {
 /**
  * 做到：加一道确认再结算。
  *
- * 详情里的「完成」就悬在备忘输入框下面，很容易被当成"保存备忘"而误触 ——
- * 一旦结算就没法回头（这个动作不可撤销），所以先问一句。
+ * 顶栏那颗按钮容易被当成"保存备忘"（它原来还是实心黑、最醒目）——
+ * 除了把标签写成「完成目标」、把实心黑让给「保存备忘」之外，这里再兜一道确认：
+ * 一旦结算就没法回头。
  */
 export function askFinish(goal: Goal) {
   showConfirmDialog({
     title: '完成这个目标？',
     message: `加 ${goal.stake} 活力值`
       + (goal.reward ? `，兑现奖励：${goal.reward}` : '') + '。',
-    confirmButtonText: '完成',
+    confirmButtonText: '完成目标',
     lockScroll: false,
   }).then(() => void finishGoal(goal)).catch(() => {})
 }
