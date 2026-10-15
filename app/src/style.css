@@ -1008,6 +1008,11 @@ html.rt-noscroll { overflow: hidden; }
 .rt-page-foot-solo { display: flex; justify-content: center; }
 .rt-page-foot-solo > * { min-width: 200px; }
 
+/* 备忘（执行区）的保存行：一个属于"备忘"的明确动作 + 落库状态提示。
+   不做整宽 —— 它不是一个主操作，只是给输入框配个可见的落点。 */
+.rt-exectools { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.rt-exectools .rbtn { padding-left: 16px; padding-right: 16px; }
+
 /* ============================================================
    桌面端外壳（构建期变体）
    ============================================================

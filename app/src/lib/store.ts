@@ -43,7 +43,21 @@ export const historyArchiveId = ref<string | null>(null)
 
 // ---------- 派生 ----------
 
-export const openArchives = computed(() => archives.value.filter((a) => a.status === 'open'))
+/**
+ * 进行中的档。
+ *
+ * **还有未了结目标的排最前** —— 那些才是"活跃"的档，一进目标页要先看到；
+ * 空档（刚建、或目标都结清了）往后放。组内保持 archives 的原始顺序
+ * （按建档时间倒序，见 getArchives），sort 是稳定的，不会打乱。
+ * 只影响展示顺序，activeArchiveId 和切换逻辑都不受影响。
+ */
+export const openArchives = computed(() => {
+  const list = archives.value.filter((a) => a.status === 'open')
+  return [...list].sort(
+    (a, b) => Number(archiveHasPending(b.id)) - Number(archiveHasPending(a.id)),
+  )
+})
+
 /** 封档记录：**最新的排最前**（按封档时间，不是建档时间） */
 export const sealedArchives = computed(() =>
   archives.value
@@ -389,6 +403,13 @@ export async function saveExec(id: string, exec: string) {
   }
 }
 
+/**
+ * 放弃 / 完成这类"一旦结算就没法回头"的确认框，统一 **lockScroll: false**。
+ *
+ * 它们在目标详情里弹出，而详情是全屏浮层、html 已经被 .rt-noscroll 锁住了；
+ * 弹窗再按默认去锁一次 body，就会把 window 的滚动位置挪走还不还回来 ——
+ * 就是"看完详情位置丢了"那个老 bug（实测位置被挪到 84）。
+ */
 export function askGiveUp(goal: Goal) {
   showConfirmDialog({
     title: '放弃这个目标？',
@@ -396,7 +417,24 @@ export function askGiveUp(goal: Goal) {
       + (goal.todo_id ? '，退回待办' : '') + '。',
     confirmButtonText: '放弃',
     confirmButtonColor: '#C0392B',
+    lockScroll: false,
   }).then(() => void giveUpGoal(goal)).catch(() => {})
+}
+
+/**
+ * 做到：加一道确认再结算。
+ *
+ * 详情里的「完成」就悬在备忘输入框下面，很容易被当成"保存备忘"而误触 ——
+ * 一旦结算就没法回头（这个动作不可撤销），所以先问一句。
+ */
+export function askFinish(goal: Goal) {
+  showConfirmDialog({
+    title: '完成这个目标？',
+    message: `加 ${goal.stake} 活力值`
+      + (goal.reward ? `，兑现奖励：${goal.reward}` : '') + '。',
+    confirmButtonText: '完成',
+    lockScroll: false,
+  }).then(() => void finishGoal(goal)).catch(() => {})
 }
 
 export function askSeal() {
