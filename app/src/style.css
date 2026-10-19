@@ -1177,3 +1177,26 @@ html.rt-noscroll { overflow: hidden; }
   margin-left: -280px;
 }
 .plat-desktop .rt-sheet-inner { max-width: 560px; }
+
+/* ============================================================
+   键盘弹起（手机上打字的时候）
+   ============================================================
+
+   `--rt-kb` 是 App.vue 按 visualViewport 实时写进来的"键盘吃掉的高度"。
+   没键盘时它是 0px、`html.rt-kb` 也不在 —— 下面三条全部退化成原样，
+   所以这几条不出问题时可以当它不存在。
+
+   为什么非补不可：这份工程没在 AndroidManifest 里写 windowSoftInputMode，
+   adjustResize / adjustPan 由系统挑。**没缩布局视口的那个分支**里，
+   position:fixed + height:100% 的浮层下半截正好压在键盘底下：
+   输入框下面那几行怎么都看不到，全屏的底栏（向导「押注设立」）也点不着。
+
+   1) 全屏浮层（详情 / 向导）：内容跟着可视区缩。底栏因此被抬到键盘上面，
+      中间那块 `.rt-page-body` 本来就能滚，于是"最下面那几行"够得着了。
+      浮层本身仍是满屏，只是露在键盘以外的那截刚好等于内容的高度。
+   2) 底部抽屉：整块抬到键盘上面。抽屉是贴着屏幕底的，不抬就正好被键盘盖住。
+   3) 抽屉内容区的上限：抬起之后，可用的竖向空间只剩"键盘上面那点"，
+      还按 88dvh 算的话抽屉会顶到屏幕外面去。 */
+html.rt-kb .rt-page { height: calc(100% - var(--rt-kb)); }
+html.rt-kb .van-popup--bottom { transform: translate3d(0, calc(-1 * var(--rt-kb)), 0); }
+html.rt-kb .rt-sheet-body { max-height: calc(100vh - var(--rt-kb) - 150px); }

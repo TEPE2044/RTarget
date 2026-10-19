@@ -200,6 +200,26 @@ watch(fullOverlay, (on) => {
   document.documentElement.classList.toggle('rt-noscroll', on)
 })
 
+/**
+ * 键盘弹起时被吃掉的那段高度，实时量给 CSS（`--rt-kb`，见 style.css 的「键盘弹起」）。
+ *
+ * 为什么要前端补这一手：这份工程没在 AndroidManifest 里写 windowSoftInputMode，
+ * 系统自己在 adjustResize / adjustPan 里挑一个。**万一它没缩布局视口**，
+ * position:fixed + height:100% 的浮层下半截就正好压在键盘底下 ——
+ * 输入框往下那几行怎么都看不到，全屏底栏那个「押注设立」也点不着。
+ *
+ * 量法 = 布局视口高度 − 可视区高度。**系统自己缩过的时候这两个相等、算出 0**，
+ * 所以同一个公式在两种行为下都成立，不用去猜这次走的是哪条路。
+ */
+const vv = window.visualViewport
+function syncKeyboard() {
+  if (!vv) return
+  const kb = Math.round(window.innerHeight - vv.height)
+  const on = kb > 60 // 60 以下当噪声（地址栏/滚动条那点抖动），不放行
+  document.documentElement.style.setProperty('--rt-kb', `${on ? kb : 0}px`)
+  document.documentElement.classList.toggle('rt-kb', on)
+}
+
 /** 开新档：名称必须自己填（自动叫「新档 3」那种名字，回头谁都认不出是哪个档） */
 function openArchive() { newArchiveName.value = ''; showArchive.value = true }
 
@@ -448,12 +468,20 @@ onMounted(() => {
     void autoCheckUpdate()
     void refresh({ silent: true })
   })
+
+  // 键盘（Android 上只有 visualViewport 知道它占了多少）。必须先量一次：
+  // 挂载时可能已经有输入框拿着焦点了。
+  syncKeyboard()
+  vv?.addEventListener('resize', syncKeyboard)
+  vv?.addEventListener('scroll', syncKeyboard)
 })
 
 onUnmounted(() => {
   if (settleTimer) clearInterval(settleTimer)
   if (clockTimer) clearInterval(clockTimer)
   stopResume?.()
+  vv?.removeEventListener('resize', syncKeyboard)
+  vv?.removeEventListener('scroll', syncKeyboard)
 })
 
 // 壳里让系统栏图标跟着深浅主题走（浏览器上无副作用）
