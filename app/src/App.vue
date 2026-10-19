@@ -14,8 +14,8 @@ import {
 import type { CheckOutcome, DownloadOutcome } from './lib/desktopUpdate'
 import { useTheme } from './lib/theme'
 import {
-  activeGoals, bindSignOut, busy, goals, loadFail, newArchive, openTodos, openWishes,
-  refresh, resetAll, vitality,
+  activeGoals, bindSignOut, busy, goals, loadFail, lock, newArchive, openTodos, openWishes,
+  refresh, resetAll, unlock, vitality,
 } from './lib/store'
 import LoginCard from './components/LoginCard.vue'
 import HomePage from './components/HomePage.vue'
@@ -223,9 +223,21 @@ function syncKeyboard() {
 /** 开新档：名称必须自己填（自动叫「新档 3」那种名字，回头谁都认不出是哪个档） */
 function openArchive() { newArchiveName.value = ''; showArchive.value = true }
 
+/**
+ * 用户点的刷新。
+ *
+ * `refresh()` 自己会把 busy 立起来，但那是**渲染之后**才盖到按钮上的 ——
+ * 慢的时候连点两下会并排放两次全量拉取。于是这一行同步挡一道。
+ */
+function refreshNow() {
+  if (busy.value) return
+  void refresh()
+}
+
 async function onCreateArchive() {
   const n = newArchiveName.value.trim()
   if (!n) return
+  if (busy.value) return // 请求锁：慢的时候连点会开出两个同名档
   await newArchive(n)
   showArchive.value = false
 }
@@ -353,6 +365,7 @@ async function checkUpdateOnDesktop() {
 }
 
 async function onCheckUpdate() {
+  if (updateBusy.value) return // 请求锁：慢的时候连点别打两次检查/下载
   // 桌面壳（Tauri）：走热更新那条路，不再是"装新安装包即可"
   if (isDesktopShell) return checkUpdateOnDesktop()
   if (!isUpdateConfigured) {
@@ -389,7 +402,7 @@ async function onCheckUpdate() {
 async function onChangePassword() {
   if (newPwd1.value.length < 6) return showToast('密码至少 6 位')
   if (newPwd1.value !== newPwd2.value) return showToast('两次输的不一样')
-  busy.value = true
+  if (!lock()) return // 请求锁：慢的时候连点「保存」会发两次改密
   try {
     await setPassword(newPwd1.value)
     showSuccessToast('密码已更新，下次用新密码登录')
@@ -399,7 +412,7 @@ async function onChangePassword() {
   } catch (e) {
     showFailToast((e as Error).message)
   } finally {
-    busy.value = false
+    unlock()
   }
 }
 
@@ -561,7 +574,7 @@ watch(session, (s) => {
       </div>
 
       <div class="dt-tools">
-        <button class="rt-iconbtn" :disabled="busy" aria-label="刷新" @click="refresh()">
+        <button class="rt-iconbtn" :disabled="busy" aria-label="刷新" @click="refreshNow()">
           <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 11.5a8 8 0 1 0-2.4 5.7" />
@@ -619,7 +632,7 @@ watch(session, (s) => {
         <span class="rt-meta rt-num" style="margin-top:3px">{{ clock }}</span>
         <span class="rt-push"></span>
 
-        <button class="rt-iconbtn" :disabled="busy" aria-label="刷新" @click="refresh()">
+        <button class="rt-iconbtn" :disabled="busy" aria-label="刷新" @click="refreshNow()">
           <svg class="rt-ico" width="19" height="19" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 11.5a8 8 0 1 0-2.4 5.7" />
@@ -669,7 +682,7 @@ watch(session, (s) => {
       <!-- 数据没拉到：可点重试，一直挂到拉成功为止。
            拉失败时界面上的 0 和空列表会被当成"我的数据没了"，
            只弹一个会消失的 toast 兜不住这种误解。 -->
-      <button v-if="loadFail" class="rt-alert rt-alert-bad" :disabled="busy" @click="refresh()">
+      <button v-if="loadFail" class="rt-alert rt-alert-bad" :disabled="busy" @click="refreshNow()">
         <svg class="rt-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="8.6" />
@@ -783,7 +796,7 @@ watch(session, (s) => {
       <div class="rt-sheet-body">
         <p class="rt-meta" style="margin:0">{{ userEmail }}</p>
         <div class="rt-sheetlist" style="padding:0">
-          <button class="rt-sheetitem" :disabled="busy" @click="refresh(); showMore = false">
+          <button class="rt-sheetitem" :disabled="busy" @click="refreshNow(); showMore = false">
             刷新数据
           </button>
           <button class="rt-sheetitem" @click="showMore = false; showPassword = true">

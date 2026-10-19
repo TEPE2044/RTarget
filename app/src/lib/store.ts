@@ -41,6 +41,33 @@ export const loadFail = ref('')
 export const activeArchiveId = ref<string | null>(null)
 export const historyArchiveId = ref<string | null>(null)
 
+// ---------- 请求锁 ----------
+
+/**
+ * 一次只放一个动作过去。
+ *
+ * 为什么光靠按钮上的 `:disabled="busy"` 不够：那是**渲染之后**才盖上去的。
+ * 请求慢的时候（或者第二下正好点在一次重新渲染之前）第二下照样发得出去，
+ * 于是待办会建两条、目标会结算两次、愿望会加两个、向导能立出两个目标。
+ *
+ * 所以闸门必须在动作的**第一行同步**落下：
+ *     `if (!lock()) return`  …… 干活 …… `finally { unlock() }`
+ * 拿不到锁说明上一个还没跑完 —— 这一下直接丢掉（不排队：连点从来不是人的本意）。
+ */
+let acting = false
+
+export function lock(): boolean {
+  if (acting) return false
+  acting = true
+  busy.value = true
+  return true
+}
+
+export function unlock() {
+  acting = false
+  busy.value = false
+}
+
 // ---------- 派生 ----------
 
 /**
@@ -207,7 +234,8 @@ export async function refresh(opts: { silent?: boolean } = {}): Promise<void> {
     await reportError(e, '加载失败：')
   } finally {
     if (silent) refreshing = false
-    else busy.value = false
+    // 动作拿着锁的时候别替它放手 —— 不然这个动作还没收尾，按钮就先亮回来了
+    else if (!acting) busy.value = false
   }
 }
 
@@ -238,15 +266,25 @@ async function loadAll() {
   booted.value = true
 }
 
-/** 历史页：拉某个存档的记录（新的在前） */
+/**
+ * 历史页：拉某个存档的记录（新的在前）。
+ *
+ * 带了序号：连点两个不同的档时，先发的那份可能后到 —— 不认序号的话
+ * 会拿旧档的记录盖住新档的（页签已经换过去了，列表还是上一条的）。
+ * 只认最后发出的那一次。
+ */
+let recordsSeq = 0
+
 export async function loadRecords() {
   const id = historyArchiveId.value
   if (!id) { records.value = []; return }
+  const seq = ++recordsSeq
   loadingRecords.value = true
   try {
-    records.value = await getRecords(id)
+    const r = await getRecords(id)
+    if (seq === recordsSeq) records.value = r
   } finally {
-    loadingRecords.value = false
+    if (seq === recordsSeq) loadingRecords.value = false
   }
 }
 
@@ -279,7 +317,7 @@ export async function newArchive(name: string) {
 }
 
 async function doCreateArchive(name: string) {
-  busy.value = true
+  if (!lock()) return
   try {
     const a = await createArchive(name)
     // 先把新档塞进列表再选中，避免页签拿不到名字而闪出 uuid
@@ -289,12 +327,12 @@ async function doCreateArchive(name: string) {
   } catch (e) {
     await reportError(e)
   } finally {
-    busy.value = false
+    unlock()
   }
 }
 
 export async function sealArchive(id: string) {
-  busy.value = true
+  if (!lock()) return
   try {
     const penalty = await apiSealArchive(id)
     showToast(penalty < 0 ? `已封档，扣 ${Math.abs(penalty)} 活力值` : '已封档，免费')
@@ -305,12 +343,12 @@ export async function sealArchive(id: string) {
   } catch (e) {
     await reportError(e)
   } finally {
-    busy.value = false
+    unlock()
   }
 }
 
 export async function removeArchive(a: Archive) {
-  busy.value = true
+  if (!lock()) return
   try {
     await deleteArchive(a.id)
     if (historyArchiveId.value === a.id) historyArchiveId.value = null
@@ -319,7 +357,7 @@ export async function removeArchive(a: Archive) {
   } catch (e) {
     await reportError(e)
   } finally {
-    busy.value = false
+    unlock()
   }
 }
 
@@ -351,17 +389,24 @@ export async function addGoal(input: {
   /** 打卡型目标的总格数；不传 = 普通的一次性目标 */
   checkTotal?: number | null
 }) {
-  if (!activeArchiveId.value) throw new Error('先开一个档')
-  const goal = await apiCreateGoal({
-    archiveId: activeArchiveId.value,
-    vitality: vitality.value,
-    ...input,
-  })
-  showToast(`已押注设立「${goal.content}」`)
+  const aid = activeArchiveId.value
+  if (!aid) throw new Error('先开一个档')
+  // 向导第 6 步那颗「押注设立」原来没有忙碌态，连点两下会立出两个目标
+  if (!lock()) return
+  try {
+    const goal = await apiCreateGoal({
+      archiveId: aid,
+      vitality: vitality.value,
+      ...input,
+    })
+    showToast(`已押注设立「${goal.content}」`)
+  } finally {
+    unlock()
+  }
 }
 
 export async function finishGoal(goal: Goal) {
-  busy.value = true
+  if (!lock()) return
   try {
     const gained = await apiCompleteGoal(goal.id)
     if (gained === 0) {
@@ -373,7 +418,7 @@ export async function finishGoal(goal: Goal) {
   } catch (e) {
     await reportError(e)
   } finally {
-    busy.value = false
+    unlock()
   }
 }
 
@@ -384,7 +429,7 @@ export async function finishGoal(goal: Goal) {
  * 它返回 completed = true 说明这是最后一格、库里已经当场结算过了，所以拉一次全量。
  */
 export async function checkIn(goal: Goal) {
-  busy.value = true
+  if (!lock()) return
   try {
     const r = await apiCheckInGoal(goal.id)
     // 先就地更新，让格子立刻动起来；后面 refresh 会拿库里的真值覆盖
@@ -401,12 +446,12 @@ export async function checkIn(goal: Goal) {
     if (/已经打|打满|结清|不是打卡/.test(msg)) showToast(msg)
     else await reportError(e)
   } finally {
-    busy.value = false
+    unlock()
   }
 }
 
 export async function giveUpGoal(goal: Goal) {
-  busy.value = true
+  if (!lock()) return
   try {
     const r = await apiGiveUpGoal(goal.id)
     showToast(`已 −${r.lost} 活力值${r.returned ? ' · 已退回待办' : ''}`)
@@ -414,7 +459,7 @@ export async function giveUpGoal(goal: Goal) {
   } catch (e) {
     await reportError(e)
   } finally {
-    busy.value = false
+    unlock()
   }
 }
 
@@ -425,12 +470,15 @@ export async function giveUpGoal(goal: Goal) {
  * 人会以为存好了然后离开，字就丢了（自动保存已经去掉，这个状态更得是真话）。
  */
 export async function saveExec(id: string, exec: string): Promise<boolean> {
+  if (!lock()) return false // 上一次还没写完，这一下别跟着再发一遍
   try {
     await updateGoalExec(id, exec)
     return true
   } catch (e) {
     await reportError(e)
     return false
+  } finally {
+    unlock()
   }
 }
 
@@ -494,32 +542,44 @@ export async function saveTodo(input: {
 }) {
   const title = input.title.trim()
   if (!title) throw new Error('先写个标题')
-  if (input.id) {
-    await updateTodo(input.id, title, input.text)
-    const hit = todos.value.find((t) => t.id === input.id)
-    if (hit) { hit.content = title; hit.note = input.text.trim() }
-  } else {
-    const t = await createTodo(title, input.text, input.times ?? 1)
-    todos.value.unshift(t)
+  // 慢的时候连点「确定」会记出两条一样的待办（按钮的 disabled 要等重新渲染才盖上）
+  if (!lock()) return
+  try {
+    if (input.id) {
+      await updateTodo(input.id, title, input.text)
+      const hit = todos.value.find((t) => t.id === input.id)
+      if (hit) { hit.content = title; hit.note = input.text.trim() }
+    } else {
+      const t = await createTodo(title, input.text, input.times ?? 1)
+      todos.value.unshift(t)
+    }
+  } finally {
+    unlock()
   }
 }
 
 export async function toggleTodo(t: Todo) {
+  if (!lock()) return
   try {
     if (t.status === 'done') { await reopenTodo(t.id); t.status = 'open'; t.done_at = null }
     else { await setTodoDone(t.id); t.status = 'done' }
   } catch (e) {
     await reportError(e)
+  } finally {
+    unlock()
   }
 }
 
 export async function removeTodo(id: string) {
+  if (!lock()) return
   try {
     await deleteTodo(id)
     todos.value = todos.value.filter((t) => t.id !== id)
     showToast('已删掉')
   } catch (e) {
     await reportError(e)
+  } finally {
+    unlock()
   }
 }
 
@@ -531,6 +591,7 @@ export async function removeTodo(id: string) {
  */
 export async function decTodoTimes(t: Todo) {
   if (t.times_left <= 0) return
+  if (!lock()) return
   const left = t.times_left - 1
   try {
     await setTodoTimesLeft(t.id, left)
@@ -545,6 +606,8 @@ export async function decTodoTimes(t: Todo) {
     }
   } catch (e) {
     await reportError(e)
+  } finally {
+    unlock()
   }
 }
 
@@ -561,12 +624,18 @@ export function askDeleteTodo(t: Todo) {
 // ---------- 愿望 ----------
 
 export async function addWish(content: string) {
-  const w = await createWish(content)
-  wishes.value.unshift(w)
-  return w
+  if (!lock()) return
+  try {
+    const w = await createWish(content)
+    wishes.value.unshift(w)
+    return w
+  } finally {
+    unlock()
+  }
 }
 
 export async function toggleWish(w: Wish) {
+  if (!lock()) return
   try {
     if (w.status === 'done') {
       await reopenWish(w.id)
@@ -588,6 +657,8 @@ export async function toggleWish(w: Wish) {
     }
   } catch (e) {
     await reportError(e)
+  } finally {
+    unlock()
   }
 }
 
@@ -595,22 +666,28 @@ export async function toggleWish(w: Wish) {
 export async function saveWish(id: string, content: string) {
   const c = content.trim()
   if (!c) return
+  if (!lock()) return
   try {
     await updateWish(id, c)
     const hit = wishes.value.find((w) => w.id === id)
     if (hit) hit.content = c
   } catch (e) {
     await reportError(e)
+  } finally {
+    unlock()
   }
 }
 
 export async function removeWish(id: string) {
+  if (!lock()) return
   try {
     await deleteWish(id)
     wishes.value = wishes.value.filter((w) => w.id !== id)
     showToast('已从愿望单删掉')
   } catch (e) {
     await reportError(e)
+  } finally {
+    unlock()
   }
 }
 

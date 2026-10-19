@@ -30,6 +30,8 @@ defineExpose({ openNew })
 
 async function save() {
   if (!sheet.title.trim()) return
+  // 请求锁：慢的时候连点「确定」，按钮的 disabled 还没盖上，会记出两条一样的待办
+  if (busy.value) return
   try {
     await saveTodo({
       id: sheet.id, title: sheet.title, text: sheet.text, times: sheet.times,

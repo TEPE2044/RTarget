@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import {
-  addGoal, openTodos, pickableWishes, previewStake, reportError,
+  addGoal, busy, openTodos, pickableWishes, previewStake, reportError,
 } from '../lib/store'
 import { TIER_LABEL } from '../lib/game'
 import type { Tier } from '../lib/game'
@@ -199,6 +199,7 @@ async function submit() {
   // 库里没有非空约束，也没有"天数装得下次数"的约束，所以这两道防线只在客户端
   // —— 三样都不能缺，打卡次数还得真的打得完
   if (!wzValid.value || !wzReward.value || !wz.penalty.trim() || !wzChecksFeasible.value) return
+  if (busy.value) return // 请求锁：第 6 步那颗「押注设立」连点两下会立出两个目标
   try {
     await addGoal({
       content: wzTitle.value,
@@ -453,8 +454,9 @@ function cancel() {
       </div>
 
       <div class="rt-page-foot">
-        <button class="rbtn" :disabled="wz.step === 1" @click="step(-1)">上一步</button>
-        <button class="rbtn-primary" :disabled="!canNext" @click="next()">
+        <!-- 两颗都带 busy：设立那一下在飞的时候，整条底栏都别能再点 -->
+        <button class="rbtn" :disabled="busy || wz.step === 1" @click="step(-1)">上一步</button>
+        <button class="rbtn-primary" :disabled="busy || !canNext" @click="next()">
           {{ wz.step === 6 ? '押注设立' : '继续' }}
         </button>
       </div>

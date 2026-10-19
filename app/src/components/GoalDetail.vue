@@ -76,18 +76,22 @@ defineExpose({ close })
 /**
  * 完成 / 放弃：先把备忘存下来，再弹确认框 ——
  * 这条目标是"结束"，正在写的东西不该跟着一起丢。
+ *
+ * **必须 await 存完再弹框**，不能 `void saveMemo()` 一把扔出去：
+ * 存备忘这段请求握着请求锁，扔出去的话确认框会跟它撞在一起 ——
+ * 用户在框上点「完成目标」正好落在锁里，结算就被丢掉了（什么都不会发生）。
  */
-function onCompleteClick() {
+async function onCompleteClick() {
   const g = goal.value
   if (!g) return
-  void saveMemo()
+  if (!(await saveMemo())) return // 没存上就别往下走：字不能跟着目标一起结掉
   askFinish(g)
 }
 
-function onGiveUpClick() {
+async function onGiveUpClick() {
   const g = goal.value
   if (!g) return
-  void saveMemo()
+  if (!(await saveMemo())) return
   askGiveUp(g)
 }
 
@@ -164,8 +168,10 @@ const outcomeText = computed(() => {
                写备忘时屏幕上的实心黑应该只属于「保存备忘」（见下面那行）。
                标签也带上宾语（完成目标 / 放弃目标），不给"以为是保存"留余地。 -->
           <div v-else class="btn-group">
-            <button class="rbtn rbtn-danger" @click="onGiveUpClick()">放弃目标</button>
-            <button v-if="!isCheckGoal(goal)" class="rbtn ml-2" @click="onCompleteClick()">完成目标</button>
+            <!-- 两颗都带 busy：结算请求在飞的时候别让人再点一次（结果只会是"已经结清了"） -->
+            <button class="rbtn rbtn-danger" :disabled="busy" @click="onGiveUpClick()">放弃目标</button>
+            <button v-if="!isCheckGoal(goal)" class="rbtn ml-2" :disabled="busy"
+              @click="onCompleteClick()">完成目标</button>
           </div>
         </div>
       </div>

@@ -27,6 +27,7 @@ function attachedTo(id: string): string {
 async function save() {
   const text = sheet.text.trim()
   if (!text) return
+  if (busy.value) return // 请求锁：慢的时候连点「确定」会加出两个一样的愿望
   try {
     if (sheet.editId) await saveWish(sheet.editId, text)
     else await addWish(text)

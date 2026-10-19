@@ -142,8 +142,12 @@ async function giveUp(tip = '已退出，随时可以再来') {
 }
 
 // ---------- 动作 ----------
+//
+// 每个动作第一行那句 `if (busy.value) return` 是请求锁：按钮上的 `:disabled="busy"`
+// 要等重新渲染才盖上，慢的时候连点两下，第二下照样发得出去（登录/发码各发两次）。
 
 async function doSendCode() {
+  if (busy.value) return
   error.value = ''
   if (!email.value.trim()) return (error.value = '先填邮箱')
   if (cooldown.value > 0) return
@@ -162,6 +166,7 @@ async function doSendCode() {
 }
 
 async function doVerify() {
+  if (busy.value) return
   error.value = ''
   if (!codeOk.value) return (error.value = '把邮件里那串数字填进来')
 
@@ -189,6 +194,7 @@ async function doVerify() {
 }
 
 async function doSetPassword() {
+  if (busy.value) return
   error.value = ''
   if (pwd1.value.length < 6) return (error.value = '密码至少 6 位')
   if (pwd1.value !== pwd2.value) return (error.value = '两次输的不一样')
@@ -212,6 +218,7 @@ async function doSetPassword() {
 }
 
 async function doLogin() {
+  if (busy.value) return
   error.value = ''
   if (!email.value.trim() || !password.value) return (error.value = '邮箱和密码都要填')
 
