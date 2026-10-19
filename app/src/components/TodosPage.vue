@@ -123,8 +123,12 @@ async function save() {
     </template>
   </template>
 
-  <!-- 新建 / 编辑抽屉 -->
-  <van-popup v-model:show="sheet.show" position="bottom" round>
+  <!-- 新建 / 编辑抽屉。
+       close-on-click-overlay=false：**里头是能写字的地方**，而点一下旁边那块暗色遮罩
+       就把它整个收掉是很容易发生的（一只手扶着看、另一只手误碰）—— 记了一半的内容
+       会连招呼都不打就没了。关掉它，只剩下面那个「取消」能收。（全屏的详情 / 向导
+       本来就是这么处理的。） -->
+  <van-popup v-model:show="sheet.show" position="bottom" round :close-on-click-overlay="false">
     <div class="rt-sheet-inner">
       <div class="rt-sheet-head">{{ sheet.id ? '编辑待办' : '记一条待办' }}</div>
       <div class="rt-sheet-body">

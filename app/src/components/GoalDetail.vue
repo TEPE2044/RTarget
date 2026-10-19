@@ -70,6 +70,9 @@ function close() {
   }).then(() => void onSaveClick()).catch(() => emit('update:show', false))
 }
 
+// 安卓返回键也走上面这条 —— 不然按一下就直收浮层，跟点空白一样把字丢了（App.vue 里调）
+defineExpose({ close })
+
 /**
  * 完成 / 放弃：先把备忘存下来，再弹确认框 ——
  * 这条目标是"结束"，正在写的东西不该跟着一起丢。

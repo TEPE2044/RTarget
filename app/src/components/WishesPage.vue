@@ -109,7 +109,9 @@ async function save() {
     </template>
   </template>
 
-  <van-popup v-model:show="sheet.show" position="bottom" round>
+  <!-- close-on-click-overlay=false：这点跟待办抽屉同理 —— 里面在写字，
+       点一下旁边的暗色遮罩就整个收掉，写到一半的愿望就没了。只留「取消」能收 -->
+  <van-popup v-model:show="sheet.show" position="bottom" round :close-on-click-overlay="false">
     <div class="rt-sheet-inner">
       <div class="rt-sheet-head">{{ sheet.editId ? '改愿望' : '加一个愿望' }}</div>
       <div class="rt-sheet-body">

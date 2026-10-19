@@ -171,6 +171,8 @@ const showArchive = ref(false)
 const showWizard = ref(false)
 const detailShow = ref(false)
 const detailId = ref<string | null>(null)
+/** 返回键要能走详情自己的 close()（见下面 closeModal 的注释） */
+const detailRef = ref<InstanceType<typeof GoalDetail> | null>(null)
 
 const newArchiveName = ref('')
 const newPwd1 = ref('')
@@ -429,7 +431,10 @@ onMounted(() => {
       showPassword.value = false
       showArchive.value = false
       showWizard.value = false
-      detailShow.value = false
+      // 详情不能直接赋 false：里面有"写了没保存"的备忘，直接收掉就是**内容尽数丢失**。
+      // 走它自己的 close()，该问的会问一声（干净的才直接关）。
+      if (detailShow.value) detailRef.value?.close()
+      else detailShow.value = false
     },
     currentPage: () => page.value,
     // 跟点页签同一套逻辑，不然从安卓返回键回首页会漏掉滚动恢复
@@ -738,7 +743,7 @@ watch(session, (s) => {
   </div>
 
   <!-- ---------- 目标详情（全屏） ---------- -->
-  <GoalDetail v-model:show="detailShow" :goal-id="detailId" />
+  <GoalDetail ref="detailRef" v-model:show="detailShow" :goal-id="detailId" />
 
   <!-- ---------- 立项向导（6 步换页） ---------- -->
   <GoalWizard v-model:show="showWizard" @done="onWizardDone" />
@@ -768,8 +773,10 @@ watch(session, (s) => {
     </div>
   </van-popup>
 
-  <!-- ---------- 设置 / 修改密码（底部抽屉） ---------- -->
-  <van-popup v-model:show="showPassword" position="bottom" round>
+  <!-- ---------- 设置 / 修改密码（底部抽屉） ----------
+       close-on-click-overlay=false：抽屉里在输密码，点一下旁边的暗色遮罩就整个收掉，
+       刚敲的两遍密码白打。只留「取消」能收 -->
+  <van-popup v-model:show="showPassword" position="bottom" round :close-on-click-overlay="false">
     <div class="rt-sheet-inner">
       <div class="rt-sheet-head">设置密码</div>
       <div class="rt-sheet-body">
@@ -788,8 +795,9 @@ watch(session, (s) => {
     </div>
   </van-popup>
 
-  <!-- ---------- 开新存档（底部抽屉） ---------- -->
-  <van-popup v-model:show="showArchive" position="bottom" round>
+  <!-- ---------- 开新存档（底部抽屉） ----------
+       同上：里面有输入框，点空白不收，只留「取消」 -->
+  <van-popup v-model:show="showArchive" position="bottom" round :close-on-click-overlay="false">
     <div class="rt-sheet-inner">
       <div class="rt-sheet-head">开新存档</div>
       <div class="rt-sheet-body">
