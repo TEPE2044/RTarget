@@ -161,7 +161,7 @@ function onFeedClick(f: RecordItem) {
       <div v-if="!feed.length" class="rt-li">
         <span class="rt-meta">还没有动静</span>
       </div>
-      <div v-for="f in feed" :key="f.id" class="rt-li"
+      <div v-for="f in feed" :key="f.id" class="rt-li rt-li-flow"
         :class="{ 'rt-li-link': !!goalOf(f) }" @click="onFeedClick(f)">
         <span class="rt-li-ic" :class="'rt-li-ic-' + f.type">
           <van-icon :name="ICONS[f.type] || 'passed'" />

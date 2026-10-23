@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   addGoal, busy, openTodos, pickableWishes, previewStake, reportError,
 } from '../lib/store'
@@ -102,6 +102,19 @@ const quickDues = [
 const minDate = new Date()
 const maxDate = new Date(Date.now() + 365 * 86400e3)
 
+/** 桌面变体：Vant 的滚轮选择器只认触摸，鼠标拖不动，换成原生的日期时间控件 */
+const isDesktopPlat = import.meta.env.VITE_PLATFORM === 'desktop'
+const nativeDue = ref('')
+
+/** `<input type="datetime-local">` 要的是 `YYYY-MM-DDTHH:mm`（本地时间，不带时区） */
+function toLocalInput(ts: number) {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${pad2n(d.getMonth() + 1)}-${pad2n(d.getDate())}`
+    + `T${pad2n(d.getHours())}:${pad2n(d.getMinutes())}`
+}
+const nativeMin = toLocalInput(minDate.getTime())
+const nativeMax = toLocalInput(maxDate.getTime())
+
 const wzStake = computed(() => previewStake(wz.tier))
 const wzTierLabel = computed(() => TIER_LABEL[wz.tier])
 
@@ -172,8 +185,18 @@ function openPicker() {
   const d = new Date(wz.dueAt)
   wz.pickerDate = [String(d.getFullYear()), pad2n(d.getMonth() + 1), pad2n(d.getDate())]
   wz.pickerTime = [pad2n(d.getHours()), pad2n(d.getMinutes())]
+  nativeDue.value = toLocalInput(wz.dueAt)
   wz.pickerMode = 'date'
   wz.pickerShow = true
+}
+
+/** 桌面：原生控件一次选完日期 + 时刻，不用再走"日期 → 时刻"两步 */
+function confirmNativeDue() {
+  const t = new Date(nativeDue.value).getTime()
+  if (Number.isNaN(t)) return
+  wz.dueAt = t
+  wz.dueLabel = '自定义'
+  wz.pickerShow = false
 }
 
 function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
@@ -230,6 +253,7 @@ function cancel() {
        lock-scroll=false：Vant 锁背景滚动会把 window 的滚动位置挪走、关掉还不还回来
        （实测：列表滚到 350，打开浮层变 84，关闭后仍停在 84 —— 位置就丢了） -->
   <van-popup :show="show" position="bottom" :style="{ height: '100%' }" :duration="0.25"
+    class="wz-pop"
     :overlay="false" :lock-scroll="false" :close-on-click-overlay="false"
     @update:show="(v: boolean) => emit('update:show', v)">
     <div class="rt-page">
@@ -465,9 +489,22 @@ function cancel() {
 
   <!-- 日期 / 时刻选择 -->
   <van-popup v-model:show="wz.pickerShow" position="bottom" round>
-    <van-date-picker v-if="wz.pickerMode === 'date'" v-model="wz.pickerDate" :min-date="minDate"
-      :max-date="maxDate" title="选日期" @confirm="onDateConfirm" @cancel="wz.pickerShow = false" />
-    <van-time-picker v-else v-model="wz.pickerTime" title="选时刻"
-      @confirm="onTimeConfirm" @cancel="wz.pickerShow = false" />
+    <!-- 桌面：Vant 滚轮只认触摸事件，鼠标既拖不动也滚不动；用原生控件一步选完 -->
+    <div v-if="isDesktopPlat" class="rt-sheet-inner">
+      <h3 class="rt-sheet-head">选死线</h3>
+      <div class="wz-native-pick">
+        <input type="datetime-local" v-model="nativeDue" :min="nativeMin" :max="nativeMax" />
+        <div class="wz-native-acts">
+          <button class="rbtn" @click="wz.pickerShow = false">取消</button>
+          <button class="rbtn-primary" @click="confirmNativeDue()">确定</button>
+        </div>
+      </div>
+    </div>
+    <template v-else>
+      <van-date-picker v-if="wz.pickerMode === 'date'" v-model="wz.pickerDate" :min-date="minDate"
+        :max-date="maxDate" title="选日期" @confirm="onDateConfirm" @cancel="wz.pickerShow = false" />
+      <van-time-picker v-else v-model="wz.pickerTime" title="选时刻"
+        @confirm="onTimeConfirm" @cancel="wz.pickerShow = false" />
+    </template>
   </van-popup>
 </template>

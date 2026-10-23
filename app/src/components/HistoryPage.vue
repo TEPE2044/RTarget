@@ -40,7 +40,7 @@ const ICONS: Record<string, string> = {
       <p class="rt-cap rt-gap26">记录</p>
       <van-skeleton v-if="loadingRecords" title :row="4" style="padding:8px 0" />
       <div v-else class="rt-card rt-listpad">
-        <div v-for="r in records" :key="r.id" class="rt-li">
+        <div v-for="r in records" :key="r.id" class="rt-li rt-li-flow">
           <span class="rt-li-ic" :class="'rt-li-ic-' + r.type">
             <van-icon :name="ICONS[r.type] || 'passed'" />
           </span>

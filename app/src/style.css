@@ -1074,12 +1074,15 @@ html.rt-noscroll { overflow: hidden; }
 .plat-desktop .rt-duo { max-width: 620px; }
 
 /* 首页动态 / 历史这类"图标 + 文案 + 时间"的行：
-   手机上时间另起一行；桌面横着排更省竖向空间，时间靠右、贴着末尾那个箭头。 */
-.plat-desktop .rt-li:has(.rt-li-ic) { align-items: center; }
-.plat-desktop .rt-li:has(.rt-li-ic) .rt-li-2 {
+   手机上时间另起一行；桌面横着排更省竖向空间，时间靠右、贴着末尾那个箭头。
+   只认 .rt-li-flow 这个标记 —— 先前用的是 `:has(.rt-li-ic)`，把所有带图标的行
+   都算进来了，结果「从待办挑」里"标题 + 备注"被压成横向两条：标题被挤没、
+   备注横着溢出。这里改成由页面自己声明。 */
+.plat-desktop .rt-li-flow { align-items: center; }
+.plat-desktop .rt-li-flow .rt-li-2 {
   display: flex; align-items: center; gap: 12px; min-width: 0;
 }
-.plat-desktop .rt-li:has(.rt-li-ic) .rt-li-2 .rt-meta {
+.plat-desktop .rt-li-flow .rt-li-2 .rt-meta {
   margin-left: auto; flex: 0 0 auto; white-space: nowrap;
 }
 
@@ -1177,6 +1180,40 @@ html.rt-noscroll { overflow: hidden; }
   margin-left: -280px;
 }
 .plat-desktop .rt-sheet-inner { max-width: 560px; }
+
+/* 立项向导是"全屏浮层"（height:100%），不是那条 560px 的抽屉条。
+   桌面上要铺满整个窗口 —— 否则就是一条全高的窄条、左右露出主界面，
+   圆角和阴影都糊在边上，看着像"边界没对齐"。内容按 760px 居中，
+   免得在 1180 宽里把一行表单拉成一条横线。 */
+.plat-desktop .van-popup--bottom.wz-pop {
+  left: 0;
+  width: 100%;
+  margin-left: 0;
+  border-radius: 0;
+}
+.plat-desktop .wz-pop .rt-page-body,
+.plat-desktop .wz-pop .rt-page-foot {
+  padding-left: max(16px, calc((100% - 760px) / 2));
+  padding-right: max(16px, calc((100% - 760px) / 2));
+}
+
+/* 桌面端的原生日期时间控件（Vant 滚轮只认触摸，鼠标拖不动） */
+.plat-desktop .wz-native-pick { padding: 4px 16px 18px; }
+.plat-desktop .wz-native-pick input[type='datetime-local'] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--rt-line-strong);
+  border-radius: 10px;
+  background: var(--rt-bg);
+  color: var(--rt-tx);
+  font: inherit;
+  font-size: 15px;
+}
+.plat-desktop .wz-native-acts {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-top: 12px;
+}
 
 /* ============================================================
    键盘弹起（手机上打字的时候）
