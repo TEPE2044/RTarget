@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   check,
   checkShell,
+  currentBundle,
   download,
   fetchFrontendManifest,
   installShell,
@@ -39,6 +40,8 @@ const percent = ref(0)
 const downloadLabel = ref('')
 
 const shellUpdate = ref<ShellUpdateInfo | null>(null)
+/** 当前正在跑的前端 bundle 版本 */
+const frontCurrent = ref('')
 /** 前端待更新到的版本；空串 = 不用更 */
 const frontVersion = ref('')
 /** 前端包上次已经下好、只是还没重启 */
@@ -69,6 +72,9 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 }
 
 onMounted(async () => {
+  // 当前前端版本（只是展示，读不到就算了）
+  frontCurrent.value = (await currentBundle())?.version ?? ''
+
   // 壳先查 —— 外壳装不上时，前端的版本判定也还有意义，所以两条各查各的
   try {
     const shellRes = await withTimeout(checkShell(), CHECK_TIMEOUT_MS)
@@ -196,7 +202,9 @@ async function onUpdate() {
           </div>
           <div v-if="frontVersion" class="rt-gate-row">
             <span class="rt-gate-k">前端</span>
-            <span class="rt-gate-v rt-num">{{ frontVersion }}</span>
+            <span class="rt-gate-v rt-num">
+              {{ frontCurrent ? frontCurrent + ' → ' : '' }}{{ frontVersion }}
+            </span>
           </div>
         </div>
         <div v-if="noteLines.length" class="rt-gate-notes">
