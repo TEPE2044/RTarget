@@ -379,7 +379,11 @@ async function checkUpdateOnDesktop() {
       const manifest = await fetchFrontendManifest()
       if (manifest?.notes) notes.push(...manifest.notes.split('\n'))
     }
-    if (notes.length) lines.push('', ...notes.slice(0, 6))
+    const noteLines = notes
+      .map((s) => s.trim().replace(/^[-·•]\s*/, ''))
+      .filter(Boolean)
+      .slice(0, 5)
+    if (noteLines.length) lines.push('', ...noteLines.map((l) => `· ${l}`))
 
     showConfirmDialog({
       title: '发现可用更新',

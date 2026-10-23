@@ -54,9 +54,9 @@ const CHECK_TIMEOUT_MS = 15_000
 const noteLines = computed(() =>
   notes.value
     .split('\n')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/^[-·•]\s*/, ''))
     .filter(Boolean)
-    .slice(0, 6),
+    .slice(0, 5),
 )
 
 function pass() {
@@ -208,7 +208,9 @@ async function onUpdate() {
           </div>
         </div>
         <div v-if="noteLines.length" class="rt-gate-notes">
-          <p v-for="(line, i) in noteLines" :key="i">{{ line }}</p>
+          <p v-for="(line, i) in noteLines" :key="i">
+            <i class="rt-gate-dot" />{{ line }}
+          </p>
         </div>
         <div class="rt-gate-actions">
           <button class="rbtn-primary" @click="onUpdate">更新并重启</button>
@@ -283,11 +285,22 @@ async function onUpdate() {
   background: var(--rt-card, rgba(255, 255, 255, 0.7));
 }
 .rt-gate-notes p {
+  display: flex;
+  gap: 6px;
   margin: 0;
-  padding: 2px 0;
+  padding: 3px 0;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--rt-tx2, #555);
+}
+.rt-gate-dot {
+  flex: 0 0 3px;
+  width: 3px;
+  height: 3px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
 }
 .rt-gate-actions {
   display: flex;
