@@ -78,3 +78,89 @@ export async function relaunch(): Promise<void> {
 export async function quit(): Promise<void> {
   await invoke('quit')
 }
+
+// ---------------------------------------------------------------------------
+// 整包（外壳）更新：装的是安装包，不是前端 bundle
+// ---------------------------------------------------------------------------
+
+export interface ShellUpdateInfo {
+  currentVersion: string
+  version: string
+  /** latest.json 里的 notes */
+  body?: string | null
+}
+
+export interface ShellCheckResult {
+  /** false = 检查本身失败（断网 / 桶里还没 latest.json / 配置不对） */
+  ok: boolean
+  info: ShellUpdateInfo | null
+}
+
+/** 查外壳有没有新版。查不动时 ok=false，由调用方决定提示还是放行 */
+export async function checkShell(): Promise<ShellCheckResult> {
+  try {
+    return { ok: true, info: await invoke<ShellUpdateInfo | null>('shell_check') }
+  } catch {
+    return { ok: false, info: null }
+  }
+}
+
+/** 下载并安装外壳。成功时安装器会先退出应用 —— 这之后的代码不保证执行 */
+export async function installShell(): Promise<void> {
+  await invoke('shell_install')
+}
+
+/** 外壳下载进度。chunk = 本次块大小（累加），total = 总字节（可能为 null） */
+export async function onShellProgress(
+  cb: (p: { chunk: number; total: number | null }) => void,
+): Promise<() => void> {
+  return window.__TAURI__!.event!.listen!('shell-update://progress', (e) => {
+    cb(e.payload as { chunk: number; total: number | null })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// 更新说明：两个源的地址都由壳配置提供，前端不抄第二份
+// ---------------------------------------------------------------------------
+
+export interface UpdateUrls {
+  frontendManifest: string
+  shellLatest: string
+}
+
+export async function updateUrls(): Promise<UpdateUrls> {
+  return invoke<UpdateUrls>('update_urls')
+}
+
+export interface FrontendManifest {
+  version: string
+  notes?: string
+}
+
+/**
+ * 拉前端包的签名清单，**只为了读 notes**。
+ * 版本判定与校验和仍由 hot-update 插件负责，这里读到什么都不影响更新本身。
+ */
+export async function fetchFrontendManifest(): Promise<FrontendManifest | null> {
+  try {
+    const { frontendManifest } = await updateUrls()
+    if (!frontendManifest) return null
+    const sep = frontendManifest.includes('?') ? '&' : '?'
+    const res = await fetch(`${frontendManifest}${sep}t=${Date.now()}`, { cache: 'no-store' })
+    if (!res.ok) return null
+    return (await res.json()) as FrontendManifest
+  } catch {
+    return null
+  }
+}
+
+/** 当前正在跑的前端 bundle 版本（embedded = 壳内置的那份） */
+export async function currentBundle(): Promise<{ source: string; version: string } | null> {
+  try {
+    return await invoke<{ source: string; version: string }>(
+      'plugin:hot-update|current_bundle',
+    )
+  } catch {
+    return null
+  }
+}

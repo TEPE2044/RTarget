@@ -9,9 +9,10 @@ import {
 } from './lib/updater'
 import type { LatestInfo } from './lib/updater'
 import {
-  check as desktopCheck, download as desktopDownload, notifyReady, relaunch as desktopRelaunch,
+  check as desktopCheck, checkShell, currentBundle, download as desktopDownload,
+  fetchFrontendManifest, installShell, notifyReady, relaunch as desktopRelaunch,
 } from './lib/desktopUpdate'
-import type { CheckOutcome, DownloadOutcome } from './lib/desktopUpdate'
+import type { CheckOutcome, ShellUpdateInfo } from './lib/desktopUpdate'
 import { useTheme } from './lib/theme'
 import {
   activeGoals, bindSignOut, busy, goals, loadFail, lock, newArchive, openTodos, openWishes,
@@ -252,6 +253,9 @@ const updateBusy = ref(false)
 const updateReady = ref<{ latest: LatestInfo; current: string } | null>(null)
 const updateApplying = ref(false)
 const currentVer = ref('')
+/** 桌面端：「更多」里分开展示的两个版本号 */
+const shellVer = ref('')
+const frontVer = ref('')
 let currentVerLoaded = false
 /** 上次自检的时刻 —— 切回前台很频繁，别每次都打一次网络 */
 let lastAutoCheck = 0
@@ -299,7 +303,19 @@ async function onApplyUpdate() {
 /** 打开「更多」抽屉时才去问当前版本，省得每次启动都打一次原生调用 */
 async function loadCurrentVersion() {
   if (currentVerLoaded || !(isNative || isDesktopShell)) return
-  currentVer.value = await currentVersion()
+  if (isDesktopShell) {
+    // 桌面端要分开报两套号：壳（安装包）+ 前端 bundle（OTA 切过去的那份）
+    try {
+      shellVer.value = (await window.__TAURI__?.app?.getVersion?.()) ?? ''
+    } catch {
+      /* 读不到就留空，不拦着抽屉打开 */
+    }
+    const bundle = await currentBundle()
+    frontVer.value = bundle?.version ?? ''
+    currentVer.value = shellVer.value ? `桌面版 ${shellVer.value}` : '桌面版'
+  } else {
+    currentVer.value = await currentVersion()
+  }
   currentVerLoaded = true
 }
 
@@ -320,45 +336,104 @@ function desktopBlockedMessage(o: { status: string; required?: string; shell?: s
 }
 
 /**
- * 桌面壳（Tauri）的「检查更新」：check → download → 就位后问要不要立即重启。
+ * 桌面壳（Tauri）的「检查更新」：壳、前端各查一次，一起报出来。
  *
  * 与启动闸门（UpdateGate）共用同一套底层调用，区别是这里**不强制** ——
- * 闸门是"必须更新或退出应用"，这里可以选「下次启动」。
+ * 闸门是"必须更新或退出应用"，这里可以选「稍后」。
  */
 async function checkUpdateOnDesktop() {
   updateBusy.value = true
+  const t = showLoadingToast({ message: '正在检查…', forbidClick: true, duration: 0 })
   try {
-    let found: CheckOutcome
-    try {
-      found = await desktopCheck()
-    } catch (e) {
-      return showFailToast(`检查失败：${errText(e)}`)
-    }
-    if (found.status === 'upToDate') return showSuccessToast('已是最新版本')
-    const blocked = desktopBlockedMessage(found)
-    if (blocked) return showFailToast(blocked)
-
-    const t = showLoadingToast({ message: '正在下载新版本…', forbidClick: true, duration: 0 })
-    let done: DownloadOutcome
-    try {
-      done = await desktopDownload()
-    } catch (e) {
-      t.close()
-      return showFailToast(`下载失败：${errText(e)}`)
-    }
+    const [shellRes, front] = await Promise.all([
+      checkShell(),
+      desktopCheck().catch(() => null as CheckOutcome | null),
+    ])
     t.close()
 
-    if (done.status === 'staged' || done.status === 'alreadyStaged') {
-      showConfirmDialog({
-        title: '新版本已就绪',
-        message: `${done.version} 已下载完成，重启后生效。`,
-        confirmButtonText: '立即重启',
-        cancelButtonText: '下次启动',
-      }).then(() => void desktopRelaunch()).catch(() => {})
+    // 顺带把抽屉里的两个版本号刷新一遍
+    currentVerLoaded = false
+    void loadCurrentVersion()
+
+    const shell = shellRes.info
+    const frontNew = front?.status === 'available'
+    const frontStaged = front?.status === 'alreadyStaged'
+    if (!shell && !frontNew && !frontStaged) {
+      if (!front) return showFailToast('前端包检查失败')
+      if (front.status === 'blacklisted' || front.status === 'shellTooOld') {
+        return showFailToast(desktopBlockedMessage(front) ?? '更新失败')
+      }
+      if (!shellRes.ok) return showFailToast('外壳检查失败（桶里还没有 latest.json？）')
+      return showSuccessToast('已是最新版本')
+    }
+
+    const lines: string[] = []
+    if (shell) lines.push(`外壳 ${shell.currentVersion} → ${shell.version}`)
+    if (frontNew) lines.push(`前端 ${front!.manifest.version}`)
+    if (frontStaged) lines.push(`前端 ${front!.version} 已就绪，重启后生效`)
+
+    // 更新说明：壳的来自 latest.json，前端的来自 manifest.notes
+    const notes: string[] = []
+    if (shell?.body) notes.push(...shell.body.split('\n'))
+    if (frontNew) {
+      const manifest = await fetchFrontendManifest()
+      if (manifest?.notes) notes.push(...manifest.notes.split('\n'))
+    }
+    if (notes.length) lines.push('', ...notes.slice(0, 6))
+
+    showConfirmDialog({
+      title: '发现新版本',
+      message: lines.join('\n'),
+      confirmButtonText: '更新',
+      cancelButtonText: '稍后',
+    })
+      .then(() => void applyDesktopUpdate(shell, frontNew || !!frontStaged))
+      .catch(() => {})
+  } catch (e) {
+    t.close()
+    showFailToast(`检查失败：${errText(e)}`)
+  } finally {
+    updateBusy.value = false
+  }
+}
+
+/** 确认之后的实际动作：先把前端包放到位，再装外壳（装完由安装器重启） */
+async function applyDesktopUpdate(shell: ShellUpdateInfo | null, frontNeeded: boolean) {
+  updateBusy.value = true
+  const t = showLoadingToast({ message: '正在下载…', forbidClick: true, duration: 0 })
+  try {
+    if (frontNeeded) {
+      try {
+        const done = await desktopDownload()
+        const ok = done.status === 'staged' || done.status === 'alreadyStaged'
+        if (!ok && !shell) {
+          t.close()
+          return showFailToast(desktopBlockedMessage(done) ?? '更新失败')
+        }
+      } catch (e) {
+        t.close()
+        // 前端没下成，但壳还有更新：先把壳装上，前端留给下次启动的闸门
+        if (!shell) return showFailToast(`下载失败：${errText(e)}`)
+      }
+    }
+
+    if (shell) {
+      t.close()
+      showLoadingToast({ message: '正在安装外壳，应用会重启…', forbidClick: true, duration: 0 })
+      await installShell() // 安装器会退出并重启应用
       return
     }
-    if (done.status === 'upToDate') return showSuccessToast('已是最新版本')
-    showFailToast(desktopBlockedMessage(done) ?? '更新失败')
+
+    t.close()
+    showConfirmDialog({
+      title: '新版本已就绪',
+      message: '重启后生效。',
+      confirmButtonText: '立即重启',
+      cancelButtonText: '下次启动',
+    }).then(() => void desktopRelaunch()).catch(() => {})
+  } catch (e) {
+    t.close()
+    showFailToast(`更新失败：${errText(e)}`)
   } finally {
     updateBusy.value = false
   }
@@ -802,8 +877,16 @@ watch(session, (s) => {
           <button class="rt-sheetitem" @click="showMore = false; showPassword = true">
             设置密码
           </button>
-          <!-- 应用内更新：只装在壳里才有意义（浏览器刷新就是最新） -->
-          <button v-if="isNative || isDesktopShell" class="rt-sheetitem" :disabled="updateBusy || busy"
+          <!-- 应用内更新：只装在壳里才有意义（浏览器刷新就是最新）。
+               桌面端要分两套号：外壳是安装包版本，前端是 OTA bundle 版本 -->
+          <button v-if="isDesktopShell" class="rt-sheetitem" :disabled="updateBusy || busy"
+            @click="onCheckUpdate()">
+            <span>检查更新</span>
+            <span class="rt-meta rt-push rt-num">
+              外壳 {{ shellVer || '—' }} · 前端 {{ frontVer || '—' }}
+            </span>
+          </button>
+          <button v-else-if="isNative" class="rt-sheetitem" :disabled="updateBusy || busy"
             @click="onCheckUpdate()">
             检查更新
             <span class="rt-meta rt-push rt-num">{{ currentVer || '—' }}</span>
