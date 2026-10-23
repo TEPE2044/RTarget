@@ -39,7 +39,7 @@
 | 路径 | 是什么 |
 |---|---|
 | `app/` | 前端（Vue3 + TS + Vite + **Vant 4** + Tailwind 4），含 Capacitor 的 Android 工程。<br>**它的 [README](app/README.md) 是前端与套壳的实现文档**，很全，先看那份 |
-| `../rtarget-desktop/` | **桌面端（Tauri v2）**，独立目录、不在本仓库内 —— 与 `app/` 共用同一份前端源码，只做窗口与打包。<br>[它的 README](../rtarget-desktop/README.md) 说明怎么跑、怎么出安装包 |
+| `../rtarget-desktop/` | **桌面端（Tauri v2）**，独立目录、不在本仓库内 —— 与 `app/` 共用同一份前端源码，负责窗口、托盘与两套更新（桌面端整包 + 资源包 OTA）。<br>[它的 README](../rtarget-desktop/README.md) 说明怎么跑、怎么打包发版 |
 | `docs/mechanism.md` | **机制的唯一真相**，改了机制必须先改它 |
 | `docs/feedback.md` | 反馈清单 + 每条的处理情况对照表 |
 | `supabase/migrations/` | 数据库迁移。**按编号顺序、手动在 SQL Editor 跑** |
