@@ -70,11 +70,11 @@ function switchArchive(id: string) {
         </button>
       </div>
       <div class="rt-duo mt-4">
-        <span class="rt-slug rt-slug-warm">
+        <span class="rt-slug rt-slug-warm" :title="`奖励 · ${g.reward || '没写'}`">
           <van-icon name="gift-o" />
           <span class="rt-slug-t">奖励 · {{ g.reward || '没写' }}</span>
         </span>
-        <span class="rt-slug rt-slug-cold">
+        <span class="rt-slug rt-slug-cold" :title="`惩罚 · ${g.penalty || '没写'}`">
           <van-icon name="warning-o" />
           <span class="rt-slug-t">惩罚 · {{ g.penalty || '没写' }}</span>
         </span>
