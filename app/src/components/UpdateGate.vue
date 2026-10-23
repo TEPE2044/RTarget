@@ -17,13 +17,13 @@ import {
 /**
  * 桌面端更新闸门
  *
- * 启动时按「外壳 → 前端」的顺序查，两行一起展示：
+ * 启动时按「桌面端 → 资源包」的顺序查，两行一起展示：
  *
- *   外壳  0.0.5 → 0.0.6
- *   前端  0.0.7 → 0.0.8
+ *   桌面端  0.0.5 → 0.0.6
+ *   资源包  0.0.7 → 0.0.8
  *
- * 谁有更新更谁。两个都有时**先下载前端包、再装外壳**：前端包只是"就位"，
- * 不重启；外壳安装器会把应用退掉并重启，重启后前端包正好接上 ——
+ * 谁有更新更谁。两个都有时**先下载资源包、再装桌面端**：资源包只是"就位"，
+ * 不重启；桌面端安装器会把应用退掉并重启，重启后资源包正好接上 ——
  * 一次重启把两件事都办完。
  *
  * 强制：有更新就只有「更新并重启 / 退出应用」两条路。
@@ -112,7 +112,7 @@ onMounted(async () => {
 async function runFrontendDownload(): Promise<boolean> {
   if (frontStaged.value) return true
 
-  downloadLabel.value = '正在下载前端包…'
+  downloadLabel.value = '正在下载资源包…'
   percent.value = 0
   phase.value = 'downloading'
   let unlisten: (() => void) | null = null
@@ -136,7 +136,7 @@ async function onUpdate() {
   const frontOk = frontVersion.value ? await runFrontendDownload() : false
 
   if (shellUpdate.value) {
-    downloadLabel.value = '正在下载外壳安装包…'
+    downloadLabel.value = '正在下载桌面端安装包…'
     percent.value = 0
     let received = 0
     let off: (() => void) | null = null
@@ -192,16 +192,16 @@ async function onUpdate() {
       </template>
 
       <template v-else>
-        <p class="rt-meta">有新版本</p>
+        <p class="rt-meta">发现可用更新</p>
         <div class="rt-gate-list">
           <div v-if="shellUpdate" class="rt-gate-row">
-            <span class="rt-gate-k">外壳</span>
+            <span class="rt-gate-k">桌面端</span>
             <span class="rt-gate-v rt-num">
               {{ shellUpdate.currentVersion }} → {{ shellUpdate.version }}
             </span>
           </div>
           <div v-if="frontVersion" class="rt-gate-row">
-            <span class="rt-gate-k">前端</span>
+            <span class="rt-gate-k">资源包</span>
             <span class="rt-gate-v rt-num">
               {{ frontCurrent ? frontCurrent + ' → ' : '' }}{{ frontVersion }}
             </span>

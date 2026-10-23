@@ -359,18 +359,18 @@ async function checkUpdateOnDesktop() {
     const frontNew = front?.status === 'available'
     const frontStaged = front?.status === 'alreadyStaged'
     if (!shell && !frontNew && !frontStaged) {
-      if (!front) return showFailToast('前端包检查失败')
+      if (!front) return showFailToast('资源包检查失败')
       if (front.status === 'blacklisted' || front.status === 'shellTooOld') {
         return showFailToast(desktopBlockedMessage(front) ?? '更新失败')
       }
-      if (!shellRes.ok) return showFailToast('外壳检查失败（桶里还没有 latest.json？）')
+      if (!shellRes.ok) return showFailToast('桌面端检查失败（桶里还没有 latest.json？）')
       return showSuccessToast('已是最新版本')
     }
 
     const lines: string[] = []
-    if (shell) lines.push(`外壳 ${shell.currentVersion} → ${shell.version}`)
-    if (frontNew) lines.push(`前端 ${front!.manifest.version}`)
-    if (frontStaged) lines.push(`前端 ${front!.version} 已就绪，重启后生效`)
+    if (shell) lines.push(`桌面端 ${shell.currentVersion} → ${shell.version}`)
+    if (frontNew) lines.push(`资源包 ${front!.manifest.version}`)
+    if (frontStaged) lines.push(`资源包 ${front!.version} 已就绪，重启后生效`)
 
     // 更新说明：壳的来自 latest.json，前端的来自 manifest.notes
     const notes: string[] = []
@@ -382,7 +382,7 @@ async function checkUpdateOnDesktop() {
     if (notes.length) lines.push('', ...notes.slice(0, 6))
 
     showConfirmDialog({
-      title: '发现新版本',
+      title: '发现可用更新',
       message: lines.join('\n'),
       confirmButtonText: '更新',
       cancelButtonText: '稍后',
@@ -419,7 +419,7 @@ async function applyDesktopUpdate(shell: ShellUpdateInfo | null, frontNeeded: bo
 
     if (shell) {
       t.close()
-      showLoadingToast({ message: '正在安装外壳，应用会重启…', forbidClick: true, duration: 0 })
+      showLoadingToast({ message: '正在安装桌面端，应用会重启…', forbidClick: true, duration: 0 })
       await installShell() // 安装器会退出并重启应用
       return
     }
@@ -878,12 +878,12 @@ watch(session, (s) => {
             设置密码
           </button>
           <!-- 应用内更新：只装在壳里才有意义（浏览器刷新就是最新）。
-               桌面端要分两套号：外壳是安装包版本，前端是 OTA bundle 版本 -->
+               桌面端要分两套号：桌面端是安装包版本，资源包是 OTA bundle 版本 -->
           <button v-if="isDesktopShell" class="rt-sheetitem" :disabled="updateBusy || busy"
             @click="onCheckUpdate()">
             <span>检查更新</span>
             <span class="rt-meta rt-push rt-num">
-              外壳 {{ shellVer || '—' }} · 前端 {{ frontVer || '—' }}
+              桌面端 {{ shellVer || '—' }} · 资源包 {{ frontVer || '—' }}
             </span>
           </button>
           <button v-else-if="isNative" class="rt-sheetitem" :disabled="updateBusy || busy"
