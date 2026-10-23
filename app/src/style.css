@@ -1066,10 +1066,12 @@ html.rt-noscroll { overflow: hidden; }
    这些页面的标记与手机端**共用一份**（这里一个字都没改），
    所以下面全是"宽屏下怎么排"的调整，窄回手机宽度就自动失效。 */
 
-/* 目标卡：手机上标题居中（窄列里居中才站得住），到 900px 宽就散架了 —— 靠左 */
-.plat-desktop .rt-goal-t { text-align: left; }
-.plat-desktop .rt-deadline { text-align: left; }
-.plat-desktop .rt-goal-m { justify-content: flex-start; }
+/* 目标卡：桌面上也全部居中 —— 标题、日期、押注、奖励/惩罚走同一条中轴线。
+   之前把前三样改成了左对齐，但奖励/惩罚块是 620px 居中铺开的，
+   两种对齐混在一张卡里就显得散。 */
+.plat-desktop .rt-goal-t { text-align: center; }
+.plat-desktop .rt-deadline { text-align: center; }
+.plat-desktop .rt-goal-m { justify-content: center; }
 /* 奖励 / 惩罚：手机上等分铺满是对的；桌面上摊到近 900px 就成了两条空色带。
    620px 封顶之后还要在卡片里居中 —— 否则贴左，右侧空一大片。 */
 .plat-desktop .rt-duo { max-width: 620px; margin-left: auto; margin-right: auto; }
