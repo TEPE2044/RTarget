@@ -77,27 +77,39 @@ watch(
 
 watch(() => props.show, (v) => { if (v) reset() })
 
-const quickDues = [
-  {
-    label: '今晚 18:00',
-    fn: () => {
-      const d = new Date()
-      d.setHours(18, 0, 0, 0)
-      if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1)
-      return d.getTime()
+/**
+ * 三个快捷死线。
+ *
+ * **必须每次渲染现算**，不能写成模块级常量：写死的话，18 点以后按钮还叫「今晚 18:00」，
+ * 而它背后的 `fn` 早就算成了明天 18:00 —— 标签和实际值差一天（用户看到的选项是假的）。
+ * 现在过了 18:00，这个选项直接改叫「明天 18:00」，写的就是它真会设成的时间。
+ */
+function quickDues() {
+  const six = new Date()
+  six.setHours(18, 0, 0, 0)
+  const passed = six.getTime() <= Date.now()
+  return [
+    {
+      label: passed ? '明天 18:00' : '今晚 18:00',
+      fn: () => {
+        const d = new Date()
+        d.setHours(18, 0, 0, 0)
+        if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1)
+        return d.getTime()
+      },
     },
-  },
-  { label: '明天此刻', fn: () => Date.now() + 24 * 3600e3 },
-  {
-    label: '后天 18:00',
-    fn: () => {
-      const d = new Date()
-      d.setDate(d.getDate() + 2)
-      d.setHours(18, 0, 0, 0)
-      return d.getTime()
+    { label: '明天此刻', fn: () => Date.now() + 24 * 3600e3 },
+    {
+      label: '后天 18:00',
+      fn: () => {
+        const d = new Date()
+        d.setDate(d.getDate() + 2)
+        d.setHours(18, 0, 0, 0)
+        return d.getTime()
+      },
     },
-  },
-]
+  ]
+}
 
 const minDate = new Date()
 const maxDate = new Date(Date.now() + 365 * 86400e3)
@@ -348,7 +360,7 @@ function cancel() {
           </template>
 
           <div class="rt-chiprow">
-            <button v-for="q in quickDues" :key="q.label" class="rbtn"
+            <button v-for="q in quickDues()" :key="q.label" class="rbtn"
               :class="{ 'rbtn-primary': wz.dueLabel === q.label }"
               @click="pickDue(q)">{{ q.label }}</button>
             <button class="rbtn" @click="openPicker()">自定义…</button>
