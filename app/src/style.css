@@ -1073,8 +1073,14 @@ html.rt-noscroll { overflow: hidden; }
 .plat-desktop .rt-deadline { text-align: center; }
 .plat-desktop .rt-goal-m { justify-content: center; }
 /* 奖励 / 惩罚：手机上等分铺满是对的；桌面上摊到近 900px 就成了两条空色带。
-   620px 封顶之后还要在卡片里居中 —— 否则贴左，右侧空一大片。 */
-.plat-desktop .rt-duo { max-width: 620px; margin-left: auto; margin-right: auto; }
+   620px 封顶之后还要在卡片里居中 —— 否则贴左，右侧空一大片。
+   两块之间的间隙也比手机宽：桌面卡片大，手机那 8px 放在两块色块中间像没分开。 */
+.plat-desktop .rt-duo {
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
+  gap: 20px;
+}
 
 /* 首页动态 / 历史这类"图标 + 文案 + 时间"的行：
    手机上时间另起一行；桌面横着排更省竖向空间，时间靠右、贴着末尾那个箭头。
